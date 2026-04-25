@@ -4,10 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "jpnorm"
-version = "0.0.1"
+version = "0.0.2"
 description = "みんなの日本語正規化ライブラリ / World-class Japanese text normalization"
 readme = "README.md"
 license = { text = "MIT OR Apache-2.0" }
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 requires-python = ">=3.9"
 keywords = ["japanese", "nlp", "normalization", "text"]
 classifiers = [
