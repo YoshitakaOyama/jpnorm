@@ -23,7 +23,7 @@ jpnorm-dict = { path = "crates/jpnorm-dict", version = "0.0.1" }
 unicode-normalization = "0.1"
 daachorse = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
-pyo3 = { version = "0.28", features = ["extension-module"] }
+pyo3 = { version = "0.28", features = ["extension-module", "generate-import-lib"] }
 
 [profile.release]
 lto = "thin"
