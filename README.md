@@ -17,13 +17,6 @@
 pip install jpnorm
 ```
 
-開発時は maturin で直接ビルドできます:
-
-```bash
-pip install maturin
-maturin develop --release
-```
-
 ## 使い方
 
 ```python
@@ -80,11 +73,21 @@ API キー (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) が必要です。
 ## Sudachi 同義語辞書
 
 表記ゆれ吸収は [SudachiDict](https://github.com/WorksApplications/SudachiDict)
-の `synonyms.txt` (Apache-2.0) を読み込みます。ライブラリにはバンドルしないので、
-必要なときに取得してください:
+の `synonyms.txt` (Apache-2.0) を利用できます。ライブラリにはバンドルしていないので、
+必要な場合はダウンロードしてください:
 
 ```bash
-./scripts/fetch-sudachi-synonyms.sh data/synonyms.txt
+curl -fSL -o synonyms.txt https://raw.githubusercontent.com/WorksApplications/SudachiDict/develop/src/main/text/synonyms.txt
+```
+
+## 開発
+
+```bash
+git clone https://github.com/YoshitakaOyama/jpnorm.git
+cd jpnorm
+pip install maturin
+maturin develop --release
+pytest tests/
 ```
 
 ## ライセンス
