@@ -1,0 +1,21 @@
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+*.so
+*.pyd
+
+# Claude Code
+.claude/
+
+# Editors
+.vscode/
+.idea/
+.DS_Store

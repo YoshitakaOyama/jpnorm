@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/jpnorm-core",
+    "crates/jpnorm-dict",
+    "crates/jpnorm-py",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yoshitakaoyama/jpnorm"
+homepage = "https://github.com/yoshitakaoyama/jpnorm"
+description = "世界一の日本語正規化ライブラリ / World-class Japanese text normalization"
+keywords = ["japanese", "nlp", "normalization", "text", "unicode"]
+categories = ["text-processing", "internationalization"]
+
+[workspace.dependencies]
+jpnorm-core = { path = "crates/jpnorm-core", version = "0.0.1" }
+jpnorm-dict = { path = "crates/jpnorm-dict", version = "0.0.1" }
+unicode-normalization = "0.1"
+daachorse = "1.0"
+criterion = { version = "0.5", features = ["html_reports"] }
+pyo3 = { version = "0.28", features = ["extension-module"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

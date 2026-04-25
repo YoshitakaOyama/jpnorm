@@ -1,0 +1,26 @@
+{"input": "ﾊﾝｶｸｶﾅ", "expected": "ハンカクカナ"}
+{"input": "ｶﾞｷﾞｸﾞ", "expected": "ガギグ"}
+{"input": "ﾊﾟﾋﾟﾌﾟ", "expected": "パピプ"}
+{"input": "ＡＢＣ１２３", "expected": "ABC123"}
+{"input": "ab‐cd—ef−gh", "expected": "ab-cdーef-gh"}
+{"input": "a~b～c", "expected": "abc"}
+{"input": "ーーーー", "expected": "ー"}
+{"input": "ウェーーーーイ", "expected": "ウェーイ"}
+{"input": "wwwww", "expected": "wwwww"}
+{"input": "すごーーーーい", "expected": "すごーい"}
+{"input": "日本語 の 文章", "expected": "日本語の文章"}
+{"input": "hello   world", "expected": "hello world"}
+{"input": "日本語 text 混在", "expected": "日本語text混在"}
+{"input": "   trim me   ", "expected": "trim me"}
+{"input": "ﾊﾝｶｸｶﾅ　と  全角  ！！ーーー", "expected": "ハンカクカナと全角!!ー"}
+{"input": "これは ｶﾀｶﾅ と 漢字 の 混在 テスト です〜〜〜", "expected": "これはカタカナと漢字の混在テストです"}
+{"input": "ｵｰﾙｲﾝﾜﾝ ＡＢＣ 〜〜〜 ！！！", "expected": "オールインワンABC !!!"}
+{"input": "“hello” ‘world’", "expected": "\"hello\" `world'"}
+{"input": "「日本語」", "expected": "「日本語」"}
+{"input": "Rust is fast", "expected": "Rust is fast"}
+{"input": "Python と Rust", "expected": "PythonとRust"}
+{"input": "第一章と第二節", "expected": "第一章と第二節"}
+{"input": "2024年の１２月", "expected": "2024年の12月"}
+{"input": "価格 ¥1,200 (税込)", "expected": "価格\\1,200 (税込)"}
+{"input": "URLは http://example.com/path を参照", "expected": "URLはhttp://example.com/pathを参照"}
+{"input": "hello😀world", "expected": "hello😀world"}
