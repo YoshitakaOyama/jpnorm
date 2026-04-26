@@ -88,15 +88,15 @@ impl Normalizer {
             vec![Ok(input)]
         };
 
-        // 2) 各セグメントを処理して連結
-        let mut out_text = String::with_capacity(input.len());
+        // 2) 各セグメントを処理してセグメント列を組み立てる
+        //    trim はここでは適用しない: free segment ごとに trim すると保護領域に
+        //    隣接する空白まで消えてしまい、URL/email が周辺テキストと結合する。
         let mut segments: Vec<Segment> = Vec::with_capacity(segs.len());
         for seg in segs {
             match seg {
                 Ok(plain) => {
                     let normalized = self.apply_to_free(plain);
                     if !normalized.is_empty() {
-                        out_text.push_str(&normalized);
                         segments.push(Segment::Normalized(normalized));
                     }
                 }
@@ -110,12 +110,50 @@ impl Normalizer {
                     } else {
                         protected.to_owned()
                     };
-                    out_text.push_str(&emitted);
                     segments.push(Segment::Protected {
                         text: emitted,
                         kind,
                     });
                 }
+            }
+        }
+
+        // 3) 出力全体に対する trim。
+        //    先頭/末尾の Normalized セグメントだけを縮め、Protected 領域には触らない。
+        if c.trim {
+            while let Some(Segment::Normalized(s)) = segments.first() {
+                let trimmed = s.trim_start();
+                if trimmed.is_empty() {
+                    segments.remove(0);
+                } else if trimmed.len() != s.len() {
+                    let owned = trimmed.to_owned();
+                    segments[0] = Segment::Normalized(owned);
+                    break;
+                } else {
+                    break;
+                }
+            }
+            while let Some(Segment::Normalized(s)) = segments.last() {
+                let trimmed = s.trim_end();
+                if trimmed.is_empty() {
+                    segments.pop();
+                } else if trimmed.len() != s.len() {
+                    let owned = trimmed.to_owned();
+                    let last = segments.len() - 1;
+                    segments[last] = Segment::Normalized(owned);
+                    break;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // 4) 連結
+        let mut out_text = String::with_capacity(input.len());
+        for seg in &segments {
+            match seg {
+                Segment::Normalized(s) => out_text.push_str(s),
+                Segment::Protected { text, .. } => out_text.push_str(text),
             }
         }
 
@@ -194,9 +232,9 @@ impl Normalizer {
         if c.collapse_spaces {
             s = l1_char::spaces::collapse(&s);
         }
-        if c.trim {
-            s = s.trim().to_owned();
-        }
+        // trim は normalize_with_segments で出力全体に対して適用する。
+        // ここで free segment 単位に trim すると、保護領域 (URL/email等) に
+        // 隣接する空白が消えて隣接文字と結合してしまう。
         if let Some(dict) = &self.synonyms {
             s = dict.apply(&s);
         }

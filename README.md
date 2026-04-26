@@ -22,9 +22,14 @@ pip install jpnorm
 ```python
 import jpnorm
 
-n = jpnorm.Normalizer.preset("for_search")
-print(n.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！"))
+print(jpnorm.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！"))
+# => ハンカクカナ と 全角 !!
 ```
+
+引数なしの `jpnorm.normalize()` は **`neologdn_compat`** プリセット相当の処理
+(半角カナ→全角・空白畳み込み・繰り返し短縮・記号統一など、neologdn と同等)。
+
+用途別のチューニングをしたい場合は `Normalizer.preset(name)` を使います。
 
 ## プリセット
 
@@ -35,6 +40,85 @@ print(n.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！"))
 | `neologdn_compat` | 既存 neologdn 置き換え |
 | `for_search` | 検索インデックス。URL 等は保護、絵文字除去 |
 | `for_compare` | 精度評価・重複判定。漢数字→数字・記号除去まで行い等価性を最大化 |
+
+### `for_search` — 検索インデックス向け
+
+URL/メールアドレスは壊さずに保護、絵文字は除去、空白は最小限。
+
+```python
+n = jpnorm.Normalizer.preset("for_search")
+
+n.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！")
+# => 'ハンカクカナ と 全角 !!'
+
+n.normalize("https://example.com/path?q=1 を保護")
+# => 'https://example.com/path?q=1 を保護'  ← URL 本体も周辺スペースもそのまま
+
+n.normalize("メールは test@example.com まで")
+# => 'メールは test@example.com まで'
+
+n.normalize("東京タワー🗼を見学した🎉")
+# => '東京タワーを見学した'  ← 絵文字除去
+```
+
+### `for_display` — UI表示・投稿プレビュー向け
+
+「見た目を壊さない」が原則。半角カナだけは全角化するが、絵文字や全角記号はそのまま。
+
+```python
+n = jpnorm.Normalizer.preset("for_display")
+
+n.normalize("ﾊﾝｶｸｶﾅ ＋ 全角")
+# => 'ハンカクカナ ＋ 全角'  ← 全角プラスは保持
+
+n.normalize("東京タワー🗼 を見学")
+# => '東京タワー🗼 を見学'  ← 絵文字も保持
+```
+
+### `for_compare` — 精度評価・重複判定向け
+
+漢数字→算用数字、ハイフン/チルダ等の記号も等価判定向けに整理。
+モデル評価や重複検出で「実質同じ文字列」を一致させたい場面に。
+
+```python
+n = jpnorm.Normalizer.preset("for_compare")
+
+n.normalize("三百二十円")             # => '320円'
+n.normalize("第１章")                 # => '第1章'
+n.normalize("２０２４年３月２９日")    # => '2024年3月29日'
+n.normalize("東京-渋谷")              # => '東京渋谷'
+n.normalize("東京〜渋谷")             # => '東京渋谷'
+```
+
+### `neologdn_compat` — 既存 neologdn 置き換え
+
+neologdn からの移行用。同等の処理を Rust ネイティブ実装で高速に。
+
+```python
+n = jpnorm.Normalizer.preset("neologdn_compat")
+
+n.normalize("Pythonと  Rust")     # => 'Pythonと Rust'
+n.normalize("ﾊﾝｶｸ ﾄ 全角")         # => 'ハンカク ト 全角'
+n.normalize("あ〜〜〜")            # => 'あ〜'
+```
+
+## カスタム辞書
+
+自社サービス名・タレント名・作品タイトルなどの独自表記ゆれを正規化に組み込めます。
+
+```python
+n = jpnorm.Normalizer()
+n.with_custom_dict({
+    "幽遊白書": ["幽白", "ゆうはく", "幽☆遊☆白書"],
+    "Python":   ["パイソン", "ぱいそん"],
+})
+
+n.normalize("幽☆遊☆白書を読んだ")   # => '幽遊白書を読んだ'
+n.normalize("幽白を読んだ")           # => '幽遊白書を読んだ'
+n.normalize("ぱいそん最高")           # => 'Python最高'
+```
+
+JSON 文字列から読み込む場合は `n.load_custom_dict_json(json_text)` も使えます。
 
 ## 精度比較ユーティリティ
 
