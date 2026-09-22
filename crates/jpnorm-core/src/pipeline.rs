@@ -4,8 +4,10 @@ use std::borrow::Cow;
 
 use crate::config::{Config, Preset};
 use crate::l1_char;
+use crate::l1_char::case::{self, CaseAction};
+use crate::l1_char::spacing::{self, CjkSpacing};
 use crate::l2_script::kana::{self, KanaAction};
-use crate::l2_script::{numbers, numerals};
+use crate::l2_script::{era, iteration, loanword, numbers, numerals};
 use crate::l3_lexical::SynonymDict;
 use crate::l4_extra::emoji::{self, EmojiAction};
 use crate::l4_extra::protect::{self, Kind as ProtectKind, ProtectConfig};
@@ -220,14 +222,31 @@ impl Normalizer {
             s = l1_char::cleanup::remove_control(&s);
         }
 
+        if c.remove_variation_selectors {
+            s = l1_char::kanji::remove_variation_selectors(&s);
+        }
         if c.expand_cjk_compat {
             s = l1_char::cjk_compat::expand(&s);
         }
         if c.nfkc {
             s = l1_char::unicode::nfkc(&s);
         }
+        // L1 (漢字): NFKC で互換漢字が統合漢字に寄った後に、旧字体・異体字を畳む。
+        if c.kyujitai_to_shinjitai {
+            s = l1_char::kanji::kyujitai_to_shinjitai(&s);
+        }
+        if c.unify_itaiji {
+            s = l1_char::kanji::unify_itaiji(&s);
+        }
         if c.halfwidth_kana_to_fullwidth {
             s = l1_char::width::halfwidth_kana_to_fullwidth(&s);
+        }
+        // 繰り返し記号は全角化の後・かな種変換の前 (ヽ はカタカナ文脈で判定する)。
+        if c.expand_iteration_marks {
+            s = iteration::expand_iteration_marks(&s);
+        }
+        if c.unify_loanword_kana {
+            s = loanword::unify_loanword_kana(&s);
         }
         if !matches!(c.kana, KanaAction::Keep) {
             s = kana::process(&s, c.kana);
@@ -241,6 +260,10 @@ impl Normalizer {
         if c.collapse_prolonged_run {
             s = l1_char::prolonged::collapse(&s);
         }
+        // 長音符の統一・畳み込みの後に末尾長音を落とす (ｰ や ーー を先に揃えておく)。
+        if c.strip_trailing_prolonged {
+            s = loanword::strip_trailing_prolonged(&s, 4);
+        }
         if !matches!(c.emoji_action, EmojiAction::Keep) {
             s = emoji::process(&s, &c.emoji_action);
         }
@@ -252,6 +275,10 @@ impl Normalizer {
         }
         if c.arabic_to_kansuji {
             s = numerals::arabic_to_kansuji(&s);
+        }
+        // 元号は漢数字→アラビア数字の後 (令和六年 → 令和6年 → 2024年)。
+        if c.era_to_western {
+            s = era::era_to_western(&s);
         }
         if c.canonicalize_numbers {
             s = numbers::canonicalize(&s);
@@ -265,8 +292,14 @@ impl Normalizer {
         if let Some(limit) = c.repeat_limit {
             s = l1_char::repeat::shorten(&s, limit);
         }
+        if !matches!(c.case, CaseAction::Keep) {
+            s = case::process(&s, c.case);
+        }
         if c.collapse_spaces {
             s = l1_char::spaces::collapse(&s);
+        }
+        if !matches!(c.cjk_spacing, CjkSpacing::Keep) {
+            s = spacing::process(&s, c.cjk_spacing);
         }
         // trim は normalize_with_segments で出力全体に対して適用する。
         // ここで free segment 単位に trim すると、保護領域 (URL/email等) に
@@ -420,6 +453,66 @@ impl NormalizerBuilder {
     /// カタカナをひらがなに統一する。
     pub fn kata_to_hira(mut self) -> Self {
         self.config.kana = KanaAction::KataToHira;
+        self
+    }
+
+    /// 旧字体を新字体に統一する。
+    pub fn kyujitai_to_shinjitai(mut self) -> Self {
+        self.config.kyujitai_to_shinjitai = true;
+        self
+    }
+
+    /// 人名・地名の異体字を代表字に統一する。
+    pub fn unify_itaiji(mut self) -> Self {
+        self.config.unify_itaiji = true;
+        self
+    }
+
+    /// 異体字セレクタを除去する。
+    pub fn remove_variation_selectors(mut self) -> Self {
+        self.config.remove_variation_selectors = true;
+        self
+    }
+
+    /// 繰り返し記号 (々ゝゞヽヾ) を展開する。
+    pub fn expand_iteration_marks(mut self) -> Self {
+        self.config.expand_iteration_marks = true;
+        self
+    }
+
+    /// カタカナ外来語のゆれを統一する。
+    pub fn unify_loanword_kana(mut self) -> Self {
+        self.config.unify_loanword_kana = true;
+        self
+    }
+
+    /// 4 文字以上のカタカナ語の末尾長音を落とす。
+    pub fn strip_trailing_prolonged(mut self) -> Self {
+        self.config.strip_trailing_prolonged = true;
+        self
+    }
+
+    /// 英字を小文字に揃える。
+    pub fn lowercase(mut self) -> Self {
+        self.config.case = CaseAction::Lower;
+        self
+    }
+
+    /// 英字を大文字に揃える。
+    pub fn uppercase(mut self) -> Self {
+        self.config.case = CaseAction::Upper;
+        self
+    }
+
+    /// 日本語と英数字の間の空白の扱いを指定する。
+    pub fn cjk_spacing(mut self, mode: CjkSpacing) -> Self {
+        self.config.cjk_spacing = mode;
+        self
+    }
+
+    /// 元号年を西暦に変換する。
+    pub fn era_to_western(mut self) -> Self {
+        self.config.era_to_western = true;
         self
     }
 
@@ -726,6 +819,39 @@ mod tests {
             assert_eq!(p.as_str().parse::<Preset>().unwrap(), p);
         }
         assert!("bogus".parse::<Preset>().is_err());
+    }
+
+    #[test]
+    fn tier1_flags_via_builder() {
+        let n = Normalizer::builder()
+            .kyujitai_to_shinjitai()
+            .unify_itaiji()
+            .expand_iteration_marks()
+            .unify_loanword_kana()
+            .strip_trailing_prolonged()
+            .lowercase()
+            .cjk_spacing(CjkSpacing::Remove)
+            .kansuji_to_arabic()
+            .era_to_western()
+            .build();
+        assert_eq!(n.normalize("髙橋さんの舊車"), "高橋さんの旧車");
+        assert_eq!(
+            n.normalize("人々のヴァイオリンとサーバー"),
+            "人人のバイオリンとサーバ"
+        );
+        assert_eq!(n.normalize("Python と Rust"), "pythonとrust");
+        assert_eq!(n.normalize("令和六年に1万2千円"), "2024年に12000円");
+    }
+
+    #[test]
+    fn for_search_lowercases_and_unifies_loanwords() {
+        let n = Normalizer::preset(Preset::ForSearch);
+        assert_eq!(n.normalize("ＰＹＴＨＯＮ入門"), "python入門");
+        assert_eq!(
+            n.normalize("コンピューターのウェブサーバー"),
+            "コンピュータのウエブサーバ"
+        );
+        assert_eq!(n.normalize("佐々木と渡邊"), "佐佐木と渡辺");
     }
 
     #[test]

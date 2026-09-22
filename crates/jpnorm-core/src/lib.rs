@@ -23,6 +23,8 @@ pub mod pipeline;
 pub mod test_fixtures;
 
 pub use config::{Config, ConfigError, ConfigValue, ParsePresetError, Preset};
+pub use l1_char::case::CaseAction;
+pub use l1_char::spacing::CjkSpacing;
 pub use l2_script::kana::KanaAction;
 pub use l3_lexical::{SynonymDict, SynonymDictError};
 pub use l4_extra::emoji::EmojiAction;

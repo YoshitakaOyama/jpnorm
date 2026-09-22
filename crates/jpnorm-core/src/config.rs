@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::str::FromStr;
 
+use crate::l1_char::case::CaseAction;
+use crate::l1_char::spacing::CjkSpacing;
 use crate::l2_script::kana::KanaAction;
 use crate::l4_extra::emoji::EmojiAction;
 use crate::l4_extra::protect::ProtectConfig;
@@ -120,6 +122,24 @@ pub struct Config {
     pub halfwidth_kana_to_fullwidth: bool,
     /// ひらがな/カタカナの統一(半角カナ→全角化の後に適用)。
     pub kana: KanaAction,
+    /// 旧字体を新字体に統一する (國→国, 體→体)。
+    pub kyujitai_to_shinjitai: bool,
+    /// 人名・地名で頻出する異体字を代表字に統一する (髙→高, 﨑→崎, 濵→浜)。
+    pub unify_itaiji: bool,
+    /// 異体字セレクタ (IVS / VS) を除去する。
+    pub remove_variation_selectors: bool,
+    /// 繰り返し記号 (々ゝゞヽヾ) を展開する (人々→人人, いすゞ→いすず)。
+    pub expand_iteration_marks: bool,
+    /// カタカナ外来語のゆれを統一する (ヴァ→バ, ウェ→ウエ, ティ→テイ)。
+    pub unify_loanword_kana: bool,
+    /// 4 文字以上のカタカナ語の末尾長音を落とす (コンピューター→コンピュータ)。
+    pub strip_trailing_prolonged: bool,
+    /// 英字の大文字小文字の統一。
+    pub case: CaseAction,
+    /// 日本語と英数字の間の空白の扱い。
+    pub cjk_spacing: CjkSpacing,
+    /// 元号年を西暦に変換する (令和6年→2024年)。
+    pub era_to_western: bool,
     /// 各種ハイフン/マイナス/ダッシュを `-` に統一する。
     pub unify_hyphens: bool,
     /// 各種チルダ/波ダッシュを `〜` に統一する。
@@ -164,6 +184,15 @@ impl Config {
             nfkc: false,
             halfwidth_kana_to_fullwidth: false,
             kana: KanaAction::Keep,
+            kyujitai_to_shinjitai: false,
+            unify_itaiji: false,
+            remove_variation_selectors: false,
+            expand_iteration_marks: false,
+            unify_loanword_kana: false,
+            strip_trailing_prolonged: false,
+            case: CaseAction::Keep,
+            cjk_spacing: CjkSpacing::Keep,
+            era_to_western: false,
             unify_hyphens: false,
             unify_tildes: false,
             unify_prolonged: false,
@@ -195,6 +224,15 @@ impl Config {
             nfkc: true,
             halfwidth_kana_to_fullwidth: true,
             kana: KanaAction::Keep,
+            kyujitai_to_shinjitai: false,
+            unify_itaiji: false,
+            remove_variation_selectors: false,
+            expand_iteration_marks: false,
+            unify_loanword_kana: false,
+            strip_trailing_prolonged: false,
+            case: CaseAction::Keep,
+            cjk_spacing: CjkSpacing::Keep,
+            era_to_western: false,
             unify_hyphens: true,
             unify_tildes: true,
             unify_prolonged: true,
@@ -226,6 +264,15 @@ impl Config {
             nfkc: true,
             halfwidth_kana_to_fullwidth: true,
             kana: KanaAction::Keep,
+            kyujitai_to_shinjitai: true,
+            unify_itaiji: true,
+            remove_variation_selectors: true,
+            expand_iteration_marks: true,
+            unify_loanword_kana: true,
+            strip_trailing_prolonged: true,
+            case: CaseAction::Lower,
+            cjk_spacing: CjkSpacing::Keep,
+            era_to_western: true,
             unify_hyphens: true,
             unify_tildes: true,
             unify_prolonged: true,
@@ -256,6 +303,15 @@ impl Config {
             nfkc: false,
             halfwidth_kana_to_fullwidth: true,
             kana: KanaAction::Keep,
+            kyujitai_to_shinjitai: false,
+            unify_itaiji: false,
+            remove_variation_selectors: false,
+            expand_iteration_marks: false,
+            unify_loanword_kana: false,
+            strip_trailing_prolonged: false,
+            case: CaseAction::Keep,
+            cjk_spacing: CjkSpacing::Keep,
+            era_to_western: false,
             unify_hyphens: false,
             unify_tildes: false,
             unify_prolonged: true,
@@ -287,6 +343,15 @@ impl Config {
             nfkc: true,
             halfwidth_kana_to_fullwidth: true,
             kana: KanaAction::Keep,
+            kyujitai_to_shinjitai: true,
+            unify_itaiji: true,
+            remove_variation_selectors: true,
+            expand_iteration_marks: true,
+            unify_loanword_kana: true,
+            strip_trailing_prolonged: true,
+            case: CaseAction::Lower,
+            cjk_spacing: CjkSpacing::Remove,
+            era_to_western: true,
             unify_hyphens: true,
             unify_tildes: true,
             unify_prolonged: true,
@@ -404,6 +469,49 @@ const KANA_CHOICES: [(&str, KanaAction); 3] = [
     ("kata_to_hira", KanaAction::KataToHira),
 ];
 
+const CASE_CHOICES: [(&str, CaseAction); 3] = [
+    ("keep", CaseAction::Keep),
+    ("lower", CaseAction::Lower),
+    ("upper", CaseAction::Upper),
+];
+
+const SPACING_CHOICES: [(&str, CjkSpacing); 3] = [
+    ("keep", CjkSpacing::Keep),
+    ("remove", CjkSpacing::Remove),
+    ("insert", CjkSpacing::Insert),
+];
+
+/// 名前 → 列挙値。無ければ選択肢一覧つきのエラー。
+fn choice<T: Copy>(
+    key: &'static str,
+    name: &str,
+    choices: &[(&'static str, T)],
+) -> Result<T, ConfigError> {
+    choices
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, v)| *v)
+        .ok_or_else(|| ConfigError::InvalidValue {
+            key,
+            message: format!(
+                "must be one of {} (got {name:?})",
+                choices
+                    .iter()
+                    .map(|(n, _)| *n)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        })
+}
+
+/// 列挙値 → 名前。
+fn choice_name<T: Copy + PartialEq>(choices: &[(&'static str, T)], value: T) -> &'static str {
+    choices
+        .iter()
+        .find(|(_, v)| *v == value)
+        .map_or("", |(n, _)| *n)
+}
+
 fn expect_bool(key: &'static str, v: ConfigValue) -> Result<bool, ConfigError> {
     match v {
         ConfigValue::Bool(b) => Ok(b),
@@ -437,6 +545,15 @@ impl Config {
         "nfkc",
         "halfwidth_kana_to_fullwidth",
         "kana",
+        "kyujitai_to_shinjitai",
+        "unify_itaiji",
+        "remove_variation_selectors",
+        "expand_iteration_marks",
+        "unify_loanword_kana",
+        "strip_trailing_prolonged",
+        "case",
+        "cjk_spacing",
+        "era_to_western",
         "unify_hyphens",
         "unify_tildes",
         "unify_prolonged",
@@ -480,17 +597,25 @@ impl Config {
             }
             "kana" => {
                 let s = expect_str(key, value)?;
-                self.kana = KANA_CHOICES
-                    .iter()
-                    .find(|(name, _)| *name == s)
-                    .map(|(_, a)| *a)
-                    .ok_or_else(|| ConfigError::InvalidValue {
-                        key,
-                        message: format!(
-                            "must be one of keep, hira_to_kata, kata_to_hira (got {s:?})"
-                        ),
-                    })?;
+                self.kana = choice(key, &s, &KANA_CHOICES)?;
             }
+            "kyujitai_to_shinjitai" => self.kyujitai_to_shinjitai = expect_bool(key, value)?,
+            "unify_itaiji" => self.unify_itaiji = expect_bool(key, value)?,
+            "remove_variation_selectors" => {
+                self.remove_variation_selectors = expect_bool(key, value)?
+            }
+            "expand_iteration_marks" => self.expand_iteration_marks = expect_bool(key, value)?,
+            "unify_loanword_kana" => self.unify_loanword_kana = expect_bool(key, value)?,
+            "strip_trailing_prolonged" => self.strip_trailing_prolonged = expect_bool(key, value)?,
+            "case" => {
+                let s = expect_str(key, value)?;
+                self.case = choice(key, &s, &CASE_CHOICES)?;
+            }
+            "cjk_spacing" => {
+                let s = expect_str(key, value)?;
+                self.cjk_spacing = choice(key, &s, &SPACING_CHOICES)?;
+            }
+            "era_to_western" => self.era_to_western = expect_bool(key, value)?,
             "unify_hyphens" => self.unify_hyphens = expect_bool(key, value)?,
             "unify_tildes" => self.unify_tildes = expect_bool(key, value)?,
             "unify_prolonged" => self.unify_prolonged = expect_bool(key, value)?,
@@ -588,13 +713,16 @@ impl Config {
             "canonicalize_numbers" => V::Bool(self.canonicalize_numbers),
             "nfkc" => V::Bool(self.nfkc),
             "halfwidth_kana_to_fullwidth" => V::Bool(self.halfwidth_kana_to_fullwidth),
-            "kana" => V::Str(
-                KANA_CHOICES
-                    .iter()
-                    .find(|(_, a)| *a == self.kana)
-                    .map(|(name, _)| (*name).to_owned())
-                    .unwrap_or_default(),
-            ),
+            "kana" => V::Str(choice_name(&KANA_CHOICES, self.kana).to_owned()),
+            "kyujitai_to_shinjitai" => V::Bool(self.kyujitai_to_shinjitai),
+            "unify_itaiji" => V::Bool(self.unify_itaiji),
+            "remove_variation_selectors" => V::Bool(self.remove_variation_selectors),
+            "expand_iteration_marks" => V::Bool(self.expand_iteration_marks),
+            "unify_loanword_kana" => V::Bool(self.unify_loanword_kana),
+            "strip_trailing_prolonged" => V::Bool(self.strip_trailing_prolonged),
+            "case" => V::Str(choice_name(&CASE_CHOICES, self.case).to_owned()),
+            "cjk_spacing" => V::Str(choice_name(&SPACING_CHOICES, self.cjk_spacing).to_owned()),
+            "era_to_western" => V::Bool(self.era_to_western),
             "unify_hyphens" => V::Bool(self.unify_hyphens),
             "unify_tildes" => V::Bool(self.unify_tildes),
             "unify_prolonged" => V::Bool(self.unify_prolonged),

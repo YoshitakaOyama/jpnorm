@@ -6,34 +6,177 @@
 //! テキスト中の連続した漢数字列を検出し、それぞれをアラビア数字に置き換える。
 
 /// テキスト中の漢数字列をアラビア数字に変換する。
+///
+/// 純粋な漢数字 (`一千二百三十四`) に加えて、アラビア数字と位取り漢字が混在する
+/// 表現 (`1万2千`, `1.5億`, `12万3456`, `1,200万`, `3千円`) も 1 つの数値として解釈する。
 pub fn kansuji_to_arabic(input: &str) -> String {
     let chars: Vec<char> = input.chars().collect();
     let mut out = String::with_capacity(input.len());
     let mut i = 0;
     while i < chars.len() {
-        if is_kansuji(chars[i]) {
-            // 連続する漢数字を集める
-            let start = i;
-            while i < chars.len() && is_kansuji(chars[i]) {
-                i += 1;
-            }
-            let segment: String = chars[start..i].iter().collect();
+        let c = chars[i];
+        if !(is_kansuji(c) || c.is_ascii_digit()) {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let end = scan_numeric_run(&chars, start);
+        let run = &chars[start..end];
+        let has_kansuji = run.iter().any(|&c| is_kansuji(c));
+        let has_arabic = run.iter().any(|c| c.is_ascii_digit());
+        let replaced = if !has_kansuji {
+            None
+        } else if !has_arabic {
+            let segment: String = run.iter().collect();
             let prev = if start == 0 {
                 None
             } else {
                 Some(chars[start - 1])
             };
-            let next = chars.get(i).copied();
-            match parse_kansuji(&segment, prev, next) {
-                Some(v) => out.push_str(&v.to_string()),
-                None => out.push_str(&segment),
-            }
+            let next = chars.get(end).copied();
+            parse_kansuji(&segment, prev, next)
         } else {
-            out.push(chars[i]);
-            i += 1;
+            parse_mixed(run)
+        };
+        match replaced {
+            Some(v) => out.push_str(&v.to_string()),
+            None => out.extend(run),
         }
+        i = end;
     }
     out
+}
+
+/// `start` から、漢数字・ASCII 数字・数字に挟まれた `.`・桁区切りとして妥当な `,`
+/// の連続を読み、その終端を返す。
+fn scan_numeric_run(chars: &[char], start: usize) -> usize {
+    let mut i = start;
+    while i < chars.len() {
+        let c = chars[i];
+        if is_kansuji(c) || c.is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let prev_digit = i > 0 && chars[i - 1].is_ascii_digit();
+        if c == '.' && prev_digit && chars.get(i + 1).is_some_and(|n| n.is_ascii_digit()) {
+            i += 1;
+            continue;
+        }
+        // 桁区切り: 直前が数字で、直後にちょうど 3 桁の数字が続き、その後に数字が続かない
+        if c == ','
+            && prev_digit
+            && chars[i + 1..]
+                .iter()
+                .take(3)
+                .filter(|n| n.is_ascii_digit())
+                .count()
+                == 3
+            && !chars.get(i + 4).is_some_and(|n| n.is_ascii_digit())
+        {
+            i += 1;
+            continue;
+        }
+        break;
+    }
+    i
+}
+
+/// アラビア数字と位取り漢字が混在した数値を解釈する。
+///
+/// 万/億/兆/京 で区切った各ブロックを、アラビア数字 (小数・桁区切り可) または
+/// 十/百/千 を含む漢数字として解釈し、倍率を掛けて合算する。小数は倍率を掛けた
+/// 結果が整数になる場合だけ受け付ける (`1.5億` は可、`1.23456万` は不可)。
+fn parse_mixed(run: &[char]) -> Option<u128> {
+    let mut total: u128 = 0;
+    let mut block: Vec<char> = Vec::new();
+    let mut saw_unit = false;
+    for &c in run {
+        let mult = match c {
+            '京' => Some(10u128.pow(16)),
+            '兆' => Some(10u128.pow(12)),
+            '億' => Some(10u128.pow(8)),
+            '万' => Some(10u128.pow(4)),
+            _ => None,
+        };
+        if let Some(mult) = mult {
+            saw_unit = true;
+            let value = if block.is_empty() {
+                1
+            } else {
+                parse_mixed_block(&block, mult)?
+            };
+            total = total.checked_add(value)?;
+            block.clear();
+        } else {
+            block.push(c);
+        }
+    }
+    if !block.is_empty() {
+        if block.iter().any(|c| matches!(c, '十' | '百' | '千')) {
+            saw_unit = true;
+        }
+        total = total.checked_add(parse_mixed_block(&block, 1)?)?;
+    }
+    // 位取り漢字を含まない混在 (例: 1一) は数値とみなさない
+    if !saw_unit {
+        return None;
+    }
+    Some(total)
+}
+
+/// 万/億/兆/京 より下のブロックを解釈し、`mult` を掛けた値を返す。
+fn parse_mixed_block(block: &[char], mult: u128) -> Option<u128> {
+    let s: String = block.iter().filter(|c| **c != ',').collect();
+    if let Some((int_part, frac_part)) = s.split_once('.') {
+        // 小数はブロック全体がアラビア数字のときだけ
+        if !int_part.chars().all(|c| c.is_ascii_digit())
+            || !frac_part.chars().all(|c| c.is_ascii_digit())
+            || int_part.is_empty()
+            || frac_part.is_empty()
+        {
+            return None;
+        }
+        let scale = 10u128.checked_pow(frac_part.len() as u32)?;
+        let digits: u128 = format!("{int_part}{frac_part}").parse().ok()?;
+        let scaled = digits.checked_mul(mult)?;
+        if scaled % scale != 0 {
+            return None;
+        }
+        return Some(scaled / scale);
+    }
+    // 十/百/千 と数字 (アラビア or 漢数字) の組み合わせ
+    let mut total: u128 = 0;
+    let mut cur: u128 = 0;
+    let mut cur_set = false;
+    for c in s.chars() {
+        match c {
+            '千' | '百' | '十' => {
+                let unit = match c {
+                    '千' => 1000,
+                    '百' => 100,
+                    _ => 10,
+                };
+                total = total.checked_add(if cur_set {
+                    cur.checked_mul(unit)?
+                } else {
+                    unit
+                })?;
+                cur = 0;
+                cur_set = false;
+            }
+            _ => {
+                let d = if c.is_ascii_digit() {
+                    u128::from(c as u8 - b'0')
+                } else {
+                    digit_value(c)?
+                };
+                cur = cur.checked_mul(10)?.checked_add(d)?;
+                cur_set = true;
+            }
+        }
+    }
+    total.checked_add(cur)?.checked_mul(mult)
 }
 
 /// アラビア数字を漢数字に変換する(位取りあり、4桁区切り)。
@@ -335,5 +478,33 @@ mod tests {
             let back = parse_kansuji(&k, None, None).unwrap();
             assert_eq!(back, n, "roundtrip {n} via {k}");
         }
+    }
+
+    #[test]
+    fn mixed_arabic_and_kanji_units() {
+        assert_eq!(kansuji_to_arabic("1万2千"), "12000");
+        assert_eq!(kansuji_to_arabic("3千円"), "3000円");
+        assert_eq!(kansuji_to_arabic("2千5百"), "2500");
+        assert_eq!(kansuji_to_arabic("12万3456人"), "123456人");
+        assert_eq!(kansuji_to_arabic("1.5億"), "150000000");
+        assert_eq!(kansuji_to_arabic("3.25万"), "32500");
+        assert_eq!(kansuji_to_arabic("1,200万円"), "12000000円");
+        assert_eq!(kansuji_to_arabic("100万"), "1000000");
+        assert_eq!(kansuji_to_arabic("1億2000万"), "120000000");
+    }
+
+    #[test]
+    fn mixed_edge_cases_untouched() {
+        // 小数が整数に落ちないものはそのまま
+        assert_eq!(kansuji_to_arabic("1.23456万"), "1.23456万");
+        // 位取り漢字を含まない混在は数値扱いしない
+        assert_eq!(kansuji_to_arabic("第1一"), "第1一");
+        // 純粋なアラビア数字は触らない (canonicalize_numbers の担当)
+        assert_eq!(
+            kansuji_to_arabic("2024年3月 1,200円 3.14"),
+            "2024年3月 1,200円 3.14"
+        );
+        // 桁区切りとして不正な , はトークンを切る
+        assert_eq!(kansuji_to_arabic("1,20万"), "1,200000");
     }
 }
