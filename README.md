@@ -1,149 +1,186 @@
 # jpnorm
 
-日本語テキスト正規化ライブラリ。
+[![PyPI](https://img.shields.io/pypi/v/jpnorm)](https://pypi.org/project/jpnorm/)
+[![Python](https://img.shields.io/pypi/pyversions/jpnorm)](https://pypi.org/project/jpnorm/)
+[![CI](https://github.com/YoshitakaOyama/jpnorm/actions/workflows/ci.yml/badge.svg)](https://github.com/YoshitakaOyama/jpnorm/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#ライセンス)
+
+日本語テキスト正規化ライブラリ。Rust 製のコアを Python から使えます。
+neologdn 互換の処理に加えて、用途別プリセット・URL 保護・絵文字処理・
+漢数字変換・カスタム辞書による表記ゆれ吸収を、フラグ単位で組み合わせられます。
+
+*Fast, configurable Japanese text normalization. Rust core with Python bindings.*
 
 ## できること
 
-- **文字正規化**: NFKC、ハイフン/チルダ/長音符のバリエーション統一、繰り返し短縮、空白畳み込み
-- **文字種変換**: 半角カナ⇄全角カナ、ひらがな⇄カタカナ、漢数字⇄算用数字
-- **表記ゆれ吸収**: Sudachi 同義語辞書による語彙正規化
-- **URL 保護**: 正規化対象から URL を除外
-- **プリセット**: 用途別(表示/検索/比較など)の設定プリセット
-- **精度比較**: モデル出力と正解データの比較ユーティリティ(完全一致/前方一致/編集距離/LLM judge)
+- **文字正規化**: NFKC、ハイフン/チルダ/長音符のバリエーション統一、引用符統一、繰り返し短縮、空白畳み込み
+- **不可視文字の除去**: ゼロ幅文字・BOM・制御文字・Bidi 制御文字 (Trojan Source 対策)・改行コード統一
+- **文字種変換**: 半角カナ→全角カナ、ひらがな⇄カタカナ、漢数字⇄算用数字、機種依存文字 (㈱①㌔) の展開/除去
+- **数値正規化**: `1,200` / `1200.00` / `一千二百` を同じ表現に (比較用途)
+- **保護領域**: URL / メールアドレス / @mention / #hashtag を正規化から除外 (URL は `<...>` 等で囲むことも可)
+- **絵文字**: 保持 / 除去 / プレースホルダ置換
+- **表記ゆれ吸収**: カスタム辞書 (dict / JSON / CSV / TSV) と Sudachi 同義語辞書
+- **精度比較**: モデル出力と正解データの比較ユーティリティ (完全一致 / 前方一致 / 編集距離 / LLM judge)
 
 ## インストール
 
 ```bash
 pip install jpnorm
+# または
+uv add jpnorm
 ```
+
+Python 3.10 以上。Linux (x86_64 / aarch64)・macOS (x86_64 / arm64)・Windows (x64) の
+wheel を配布しています。
 
 ## 使い方
 
 ```python
 import jpnorm
 
-print(jpnorm.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！"))
-# => ハンカクカナ と 全角 !!
+jpnorm.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！")
+# => 'ハンカクカナ と 全角 !!'
+
+jpnorm.normalize("東京タワー🗼を見学した🎉", preset="for_search")
+# => '東京タワーを見学した'
 ```
 
-引数なしの `jpnorm.normalize()` は **`neologdn_compat`** プリセット相当の処理
-(半角カナ→全角・空白畳み込み・繰り返し短縮・記号統一など、neologdn と同等)。
+引数なしの `jpnorm.normalize()` は `neologdn_compat` プリセット相当です。
+繰り返し使う場合は `Normalizer` を作っておくと辞書などの初期化を共有できます。
 
-用途別のチューニングをしたい場合は `Normalizer.preset(name)` を使います。
+```python
+from jpnorm import Normalizer
+
+n = Normalizer("for_search")
+n.normalize("https://example.com/path?q=1 を保護")
+# => 'https://example.com/path?q=1 を保護'
+
+n.normalize_batch(["ｶﾅ", "ＡＢＣ"])
+# => ['カナ', 'ABC']
+```
+
+`normalize` / `normalize_batch` は処理中に GIL を解放するので、スレッドプールで並列化できます。
 
 ## プリセット
 
 | 名前 | 用途 |
 |---|---|
-| `none` | 何もしない (builder のベース) |
+| `none` | 何もしない (個別フラグを積み上げるベース) |
+| `neologdn_compat` | 既存の neologdn を置き換える。既定値 |
 | `for_display` | UI 表示・投稿プレビュー。見た目を壊さない最小限 |
-| `neologdn_compat` | 既存 neologdn 置き換え |
-| `for_search` | 検索インデックス。URL 等は保護、絵文字除去 |
+| `for_search` | 検索インデックス。URL 等は保護、絵文字除去、記号統一 |
 | `for_compare` | 精度評価・重複判定。漢数字→数字・記号除去まで行い等価性を最大化 |
 
-### `for_search` — 検索インデックス向け
-
-URL/メールアドレスは壊さずに保護、絵文字は除去、空白は最小限。
+一覧は `Normalizer.presets()` で取得できます。
 
 ```python
-n = jpnorm.Normalizer.preset("for_search")
-
-n.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！")
-# => 'ハンカクカナ と 全角 !!'
-
-n.normalize("https://example.com/path?q=1 を保護")
-# => 'https://example.com/path?q=1 を保護'  ← URL 本体も周辺スペースもそのまま
-
-n.normalize("メールは test@example.com まで")
-# => 'メールは test@example.com まで'
-
-n.normalize("東京タワー🗼を見学した🎉")
-# => '東京タワーを見学した'  ← 絵文字除去
+Normalizer("for_display").normalize("ﾊﾝｶｸｶﾅ ＋ 全角 🗼")   # => 'ハンカクカナ ＋ 全角 🗼'
+Normalizer("for_compare").normalize("三百二十円")           # => '320円'
+Normalizer("for_compare").normalize("２０２４年３月２９日")  # => '2024年3月29日'
+Normalizer("neologdn_compat").normalize("あ〜〜〜")          # => 'あ〜'
 ```
 
-### `for_display` — UI表示・投稿プレビュー向け
+## カスタマイズ
 
-「見た目を壊さない」が原則。半角カナだけは全角化するが、絵文字や全角記号はそのまま。
+プリセットをベースに、キーワード引数で個別フラグを上書きできます。
+キーは `Normalizer.config` が返す dict と同じで、`Normalizer(**n.config)` で複製できます。
 
 ```python
-n = jpnorm.Normalizer.preset("for_display")
+n = Normalizer(
+    "for_search",
+    emoji="keep",              # 絵文字を残す
+    kana="kata_to_hira",       # カタカナをひらがなに統一
+    url_wrap=("<", ">"),       # URL を <...> で囲む (Slack/Markdown の自動リンク)
+    repeat_limit=3,            # 同一文字の連続を 3 つまでに短縮
+)
+n.normalize("スゴーーーーイ😀 https://example.com")
+# => 'すごーい😀 <https://example.com>'
 
-n.normalize("ﾊﾝｶｸｶﾅ ＋ 全角")
-# => 'ハンカクカナ ＋ 全角'  ← 全角プラスは保持
-
-n.normalize("東京タワー🗼 を見学")
-# => '東京タワー🗼 を見学'  ← 絵文字も保持
+n.config["nfkc"]   # => True
 ```
 
-### `for_compare` — 精度評価・重複判定向け
-
-漢数字→算用数字、ハイフン/チルダ等の記号も等価判定向けに整理。
-モデル評価や重複検出で「実質同じ文字列」を一致させたい場面に。
-
-```python
-n = jpnorm.Normalizer.preset("for_compare")
-
-n.normalize("三百二十円")             # => '320円'
-n.normalize("第１章")                 # => '第1章'
-n.normalize("２０２４年３月２９日")    # => '2024年3月29日'
-n.normalize("東京-渋谷")              # => '東京渋谷'
-n.normalize("東京〜渋谷")             # => '東京渋谷'
-```
-
-### `neologdn_compat` — 既存 neologdn 置き換え
-
-neologdn からの移行用。同等の処理を Rust ネイティブ実装で高速に。
-
-```python
-n = jpnorm.Normalizer.preset("neologdn_compat")
-
-n.normalize("Pythonと  Rust")     # => 'Pythonと Rust'
-n.normalize("ﾊﾝｶｸ ﾄ 全角")         # => 'ハンカク ト 全角'
-n.normalize("あ〜〜〜")            # => 'あ〜'
-```
+| キー | 型 | 内容 |
+|---|---|---|
+| `normalize_newlines` | bool | CRLF / CR / NEL / LS / PS を LF に統一 |
+| `remove_zero_width` / `remove_control` / `remove_bidi_control` | bool | 不可視・制御文字の除去 |
+| `nfkc` | bool | Unicode NFKC (全角英数→半角など) |
+| `halfwidth_kana_to_fullwidth` | bool | 半角カナ→全角カナ |
+| `kana` | `"keep"` / `"hira_to_kata"` / `"kata_to_hira"` | ひらがな⇄カタカナ統一 |
+| `unify_hyphens` / `unify_tildes` / `unify_prolonged` / `unify_quotes` | bool | 記号バリエーションの統一 |
+| `collapse_prolonged_run` | bool | 連続する長音符・チルダを 1 つに |
+| `repeat_limit` | int / None | 同一文字の最大連続数 (英数字は対象外) |
+| `collapse_spaces` / `trim` | bool | 空白の畳み込み・前後トリム |
+| `expand_cjk_compat` / `remove_cjk_compat` | bool | 機種依存文字の展開 / 除去 |
+| `remove_symbols` | bool | 句読点・記号の除去 |
+| `kansuji_to_arabic` / `arabic_to_kansuji` | bool | 漢数字⇄算用数字 (排他) |
+| `canonicalize_numbers` | bool | `1,200` / `1200.00` → `1200` |
+| `protect_urls` / `protect_emails` / `protect_mentions` / `protect_hashtags` | bool | 保護領域 |
+| `url_wrap` | (str, str) / None | 保護した URL を prefix/suffix で囲む |
+| `emoji` | `"keep"` / `"remove"` | 絵文字の扱い |
+| `emoji_placeholder` | str / None | 絵文字を指定文字列に置換 |
 
 ## カスタム辞書
 
 自社サービス名・タレント名・作品タイトルなどの独自表記ゆれを正規化に組み込めます。
+辞書は正規化の最終段で最長一致置換されます。複数回呼ぶとマージされます。
 
 ```python
-n = jpnorm.Normalizer()
-n.with_custom_dict({
+n = Normalizer().with_custom_dict({
     "幽遊白書": ["幽白", "ゆうはく", "幽☆遊☆白書"],
     "Python":   ["パイソン", "ぱいそん"],
 })
 
 n.normalize("幽☆遊☆白書を読んだ")   # => '幽遊白書を読んだ'
-n.normalize("幽白を読んだ")           # => '幽遊白書を読んだ'
 n.normalize("ぱいそん最高")           # => 'Python最高'
 ```
 
-JSON 文字列から読み込む場合は `n.load_custom_dict_json(json_text)` も使えます。
+ファイルからも読み込めます。拡張子で形式を判定します (`format=` で明示も可)。
+
+```python
+n = (
+    Normalizer("for_search")
+    .load_custom_dict_file("brands.json")   # {"正規形": ["表記ゆれ", ...]}
+    .load_custom_dict_file("terms.csv")     # 表記ゆれ,正規形
+    .load_custom_dict_file("terms.tsv")     # 表記ゆれ<TAB>正規形
+)
+n.load_custom_dict_json(json.dumps({...}))  # 文字列から
+n.custom_dict_size                          # 登録エントリ数
+n.clear_custom_dict()
+```
+
+### Sudachi 同義語辞書
+
+[SudachiDict](https://github.com/WorksApplications/SudachiDict) の `synonyms.txt`
+(Apache-2.0) をそのまま読み込めます。ライブラリにはバンドルしていないので、
+必要な場合はダウンロードしてください。
+
+```bash
+curl -fSL -o synonyms.txt https://raw.githubusercontent.com/WorksApplications/SudachiDict/develop/src/main/text/synonyms.txt
+```
+
+```python
+n = Normalizer("for_search").load_sudachi_synonyms("synonyms.txt")
+n.normalize("パソコンを買った")   # => 'パーソナルコンピュータを買った'
+```
 
 ## 精度比較ユーティリティ
 
 モデル出力と正解データを複数戦略で比較できます。戦略は `exact` / `prefix` /
 `edit_distance` / `llm_judge` から選択でき、比較前に `Normalizer` を通すことも
-可能です。戻り値は `ComparisonResult`(matched, score, strategy, detail)。
+可能です。戻り値は `ComparisonResult` (`matched`, `score`, `strategy`, `detail`)。
 
 ```python
 from jpnorm import Normalizer, compare
 
-n = Normalizer.preset("for_compare")
+n = Normalizer("for_compare")
 
-# 完全一致 (正規化してから比較)
-compare("ﾃｽﾄ", "テスト", strategy="exact", normalizer=n)
+compare("ﾃｽﾄ", "テスト", strategy="exact", normalizer=n)            # 正規化してから完全一致
+compare("東京都", "東京都渋谷区", strategy="prefix")                 # 前方一致 (どちら向きでも可)
+compare("kitten", "sitting", strategy="edit_distance", threshold=0.5)  # 編集距離 (Rust 実装)
 
-# 前方一致 (どちら向きでも可)
-compare("東京都", "東京都渋谷区", strategy="prefix")
-
-# 編集距離 (Levenshtein、threshold で matched 判定)
-compare("kitten", "sitting", strategy="edit_distance", threshold=0.5)
-
-# LLM judge (Anthropic / OpenAI)
+# LLM judge (Anthropic / OpenAI)。pip install "jpnorm[anthropic]" などで SDK を入れておく
 compare(
-    "出力テキスト",
-    "正解テキスト",
+    "出力テキスト", "正解テキスト",
     strategy="llm_judge",
     llm_provider="anthropic",   # or "openai"
     llm_model="claude-haiku-4-5",
@@ -151,17 +188,32 @@ compare(
 )
 ```
 
-`llm_judge` 使用時は `anthropic` または `openai` パッケージと、対応する
-API キー (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) が必要です。
+`llm_judge` は `judge_fn=` で任意の判定関数に差し替えられるので、テストでは
+API を呼ばずに済みます。API キーは `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` から読みます。
 
-## Sudachi 同義語辞書
+## Rust から使う
 
-表記ゆれ吸収は [SudachiDict](https://github.com/WorksApplications/SudachiDict)
-の `synonyms.txt` (Apache-2.0) を利用できます。ライブラリにはバンドルしていないので、
-必要な場合はダウンロードしてください:
+コアは `jpnorm-core` クレートとして独立しており、Python 無しでも使えます
+(現時点では crates.io 未公開のため git 依存で指定してください)。
 
-```bash
-curl -fSL -o synonyms.txt https://raw.githubusercontent.com/WorksApplications/SudachiDict/develop/src/main/text/synonyms.txt
+```toml
+[dependencies]
+jpnorm-core = { git = "https://github.com/YoshitakaOyama/jpnorm" }
+```
+
+```rust
+use jpnorm_core::{EmojiAction, Normalizer, Preset};
+
+let n = Normalizer::builder()
+    .preset(Preset::ForSearch)
+    .configure(|c| c.emoji_action = EmojiAction::Keep)   // プリセットの一部を打ち消す
+    .kata_to_hira()
+    .build();
+assert_eq!(n.normalize("ｶﾅ😀"), "かな😀");
+
+// 保護領域の位置も取れる (検索ハイライト等に)
+let r = n.normalize_with_segments("@alice と https://example.com だよ");
+println!("{:?}", r.segments);
 ```
 
 ## 開発
@@ -169,10 +221,20 @@ curl -fSL -o synonyms.txt https://raw.githubusercontent.com/WorksApplications/Su
 ```bash
 git clone https://github.com/YoshitakaOyama/jpnorm.git
 cd jpnorm
-pip install maturin
-maturin develop --release
-pytest tests/
+uv sync --group dev          # Rust 拡張をビルドして .venv に入れる
+uv run pytest                # Python テスト
+cargo test --workspace       # Rust テスト
+cargo clippy --workspace --all-targets -- -D warnings
+uv run ruff check . && uv run mypy
+cargo bench -p jpnorm-core   # ベンチマーク (criterion)
 ```
+
+Rust ソースを変更したら `uv sync` で再ビルドされます。
+neologdn とのゴールデン比較テストは `tests/golden/neologdn.jsonl` を使い、
+`uv run --with neologdn scripts/gen-neologdn-golden.py` で再生成できます。
+
+リリースは `CHANGELOG.md` を更新し、`v*` タグを push すると wheel のビルド・PyPI 公開・
+GitHub Release 作成まで自動で行われます。
 
 ## ライセンス
 
