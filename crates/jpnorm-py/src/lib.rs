@@ -3,11 +3,10 @@
 //! `import jpnorm` で利用する。Python 側の公開 API は `python/jpnorm/__init__.py` と
 //! 型スタブ `python/jpnorm/__init__.pyi` を参照。
 
-use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use jpnorm_core::{
-    Config, EmojiAction, KanaAction, Normalizer as CoreNormalizer, Preset, SynonymDict,
+    Config, ConfigError, ConfigValue, Normalizer as CoreNormalizer, Preset, SynonymDict,
 };
 use pyo3::exceptions::{PyIOError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -24,169 +23,59 @@ fn parse_preset(name: &str) -> PyResult<Preset> {
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-fn extract_bool(key: &str, value: &Bound<'_, PyAny>) -> PyResult<bool> {
-    value
-        .extract::<bool>()
-        .map_err(|_| PyTypeError::new_err(format!("option {key:?} must be bool")))
-}
-
-fn extract_str(key: &str, value: &Bound<'_, PyAny>) -> PyResult<String> {
-    value
-        .extract::<String>()
-        .map_err(|_| PyTypeError::new_err(format!("option {key:?} must be str")))
-}
-
-/// kwargs の 1 項目を `Config` に反映する。
-fn apply_option(cfg: &mut Config, key: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
-    match key {
-        "normalize_newlines" => cfg.normalize_newlines = extract_bool(key, value)?,
-        "remove_zero_width" => cfg.remove_zero_width = extract_bool(key, value)?,
-        "remove_control" => cfg.remove_control = extract_bool(key, value)?,
-        "remove_bidi_control" => cfg.remove_bidi_control = extract_bool(key, value)?,
-        "kansuji_to_arabic" => cfg.kansuji_to_arabic = extract_bool(key, value)?,
-        "arabic_to_kansuji" => cfg.arabic_to_kansuji = extract_bool(key, value)?,
-        "canonicalize_numbers" => cfg.canonicalize_numbers = extract_bool(key, value)?,
-        "nfkc" => cfg.nfkc = extract_bool(key, value)?,
-        "halfwidth_kana_to_fullwidth" => {
-            cfg.halfwidth_kana_to_fullwidth = extract_bool(key, value)?
-        }
-        "kana" => {
-            cfg.kana = match extract_str(key, value)?.as_str() {
-                "keep" => KanaAction::Keep,
-                "hira_to_kata" => KanaAction::HiraToKata,
-                "kata_to_hira" => KanaAction::KataToHira,
-                other => {
-                    return Err(PyValueError::new_err(format!(
-                        "option 'kana' must be one of 'keep', 'hira_to_kata', 'kata_to_hira' (got {other:?})"
-                    )));
-                }
-            }
-        }
-        "unify_hyphens" => cfg.unify_hyphens = extract_bool(key, value)?,
-        "unify_tildes" => cfg.unify_tildes = extract_bool(key, value)?,
-        "unify_prolonged" => cfg.unify_prolonged = extract_bool(key, value)?,
-        "collapse_prolonged_run" => cfg.collapse_prolonged_run = extract_bool(key, value)?,
-        "repeat_limit" => {
-            cfg.repeat_limit = if value.is_none() {
-                None
-            } else {
-                let n = value.extract::<usize>().map_err(|_| {
-                    PyTypeError::new_err("option 'repeat_limit' must be int >= 1 or None")
-                })?;
-                if n == 0 {
-                    return Err(PyValueError::new_err(
-                        "option 'repeat_limit' must be >= 1 (use None to disable)",
-                    ));
-                }
-                Some(n)
-            }
-        }
-        "collapse_spaces" => cfg.collapse_spaces = extract_bool(key, value)?,
-        "trim" => cfg.trim = extract_bool(key, value)?,
-        "expand_cjk_compat" => cfg.expand_cjk_compat = extract_bool(key, value)?,
-        "remove_symbols" => cfg.remove_symbols = extract_bool(key, value)?,
-        "remove_cjk_compat" => cfg.remove_cjk_compat = extract_bool(key, value)?,
-        "unify_quotes" => cfg.unify_quotes = extract_bool(key, value)?,
-        "protect_urls" => cfg.protect.urls = extract_bool(key, value)?,
-        "protect_emails" => cfg.protect.emails = extract_bool(key, value)?,
-        "protect_mentions" => cfg.protect.mentions = extract_bool(key, value)?,
-        "protect_hashtags" => cfg.protect.hashtags = extract_bool(key, value)?,
-        "emoji" => {
-            cfg.emoji_action = match extract_str(key, value)?.as_str() {
-                "keep" => EmojiAction::Keep,
-                "remove" => EmojiAction::Remove,
-                other => {
-                    return Err(PyValueError::new_err(format!(
-                        "option 'emoji' must be 'keep' or 'remove' (got {other:?}); \
-                         use emoji_placeholder=... to replace"
-                    )));
-                }
-            }
-        }
-        "emoji_placeholder" => {
-            cfg.emoji_action = if value.is_none() {
-                EmojiAction::Keep
-            } else {
-                EmojiAction::replace(extract_str(key, value)?)
-            }
-        }
-        "url_wrap" => {
-            cfg.url_wrap = if value.is_none() {
-                None
-            } else {
-                let (prefix, suffix) = value.extract::<(String, String)>().map_err(|_| {
-                    PyTypeError::new_err(
-                        "option 'url_wrap' must be a (prefix, suffix) tuple or None",
-                    )
-                })?;
-                cfg.protect.urls = true;
-                Some((Cow::Owned(prefix), Cow::Owned(suffix)))
-            }
-        }
-        other => {
-            return Err(PyTypeError::new_err(format!(
-                "unknown option {other:?}; see Normalizer.config for valid keys"
-            )));
-        }
+/// Python の値を `ConfigValue` に変換する。bool は int より先に判定する (Python の bool は int の派生)。
+fn py_to_value(key: &str, v: &Bound<'_, PyAny>) -> PyResult<ConfigValue> {
+    if v.is_none() {
+        return Ok(ConfigValue::None);
     }
-    Ok(())
+    if let Ok(b) = v.extract::<bool>() {
+        return Ok(ConfigValue::Bool(b));
+    }
+    if let Ok(n) = v.extract::<usize>() {
+        return Ok(ConfigValue::Int(n));
+    }
+    if v.extract::<i64>().is_ok() {
+        return Err(PyTypeError::new_err(format!(
+            "option {key:?} must be a non-negative int"
+        )));
+    }
+    if let Ok(s) = v.extract::<String>() {
+        return Ok(ConfigValue::Str(s));
+    }
+    if let Ok((a, b)) = v.extract::<(String, String)>() {
+        return Ok(ConfigValue::Pair(a, b));
+    }
+    Err(PyTypeError::new_err(format!(
+        "option {key:?} has unsupported type {}",
+        v.get_type().name()?
+    )))
+}
+
+fn value_to_py<'py>(py: Python<'py>, v: ConfigValue) -> PyResult<Bound<'py, PyAny>> {
+    Ok(match v {
+        ConfigValue::Bool(b) => b.into_pyobject(py)?.to_owned().into_any(),
+        ConfigValue::Int(n) => n.into_pyobject(py)?.into_any(),
+        ConfigValue::Str(s) => s.into_pyobject(py)?.into_any(),
+        ConfigValue::Pair(a, b) => PyTuple::new(py, [a, b])?.into_any(),
+        ConfigValue::None => py.None().into_bound(py),
+    })
+}
+
+fn config_err(e: ConfigError) -> PyErr {
+    match e {
+        ConfigError::UnknownKey(k) => PyTypeError::new_err(format!(
+            "unknown option {k:?}; see Normalizer.config for valid keys"
+        )),
+        ConfigError::WrongType { .. } => PyTypeError::new_err(e.to_string()),
+        _ => PyValueError::new_err(e.to_string()),
+    }
 }
 
 /// `Config` を kwargs 互換の dict に変換する(`Normalizer(**n.config)` で復元できる)。
 fn config_to_dict<'py>(py: Python<'py>, cfg: &Config) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
-    d.set_item("normalize_newlines", cfg.normalize_newlines)?;
-    d.set_item("remove_zero_width", cfg.remove_zero_width)?;
-    d.set_item("remove_control", cfg.remove_control)?;
-    d.set_item("remove_bidi_control", cfg.remove_bidi_control)?;
-    d.set_item("kansuji_to_arabic", cfg.kansuji_to_arabic)?;
-    d.set_item("arabic_to_kansuji", cfg.arabic_to_kansuji)?;
-    d.set_item("canonicalize_numbers", cfg.canonicalize_numbers)?;
-    d.set_item("nfkc", cfg.nfkc)?;
-    d.set_item(
-        "halfwidth_kana_to_fullwidth",
-        cfg.halfwidth_kana_to_fullwidth,
-    )?;
-    d.set_item(
-        "kana",
-        match cfg.kana {
-            KanaAction::Keep => "keep",
-            KanaAction::HiraToKata => "hira_to_kata",
-            KanaAction::KataToHira => "kata_to_hira",
-        },
-    )?;
-    d.set_item("unify_hyphens", cfg.unify_hyphens)?;
-    d.set_item("unify_tildes", cfg.unify_tildes)?;
-    d.set_item("unify_prolonged", cfg.unify_prolonged)?;
-    d.set_item("collapse_prolonged_run", cfg.collapse_prolonged_run)?;
-    d.set_item("repeat_limit", cfg.repeat_limit)?;
-    d.set_item("collapse_spaces", cfg.collapse_spaces)?;
-    d.set_item("trim", cfg.trim)?;
-    d.set_item("expand_cjk_compat", cfg.expand_cjk_compat)?;
-    d.set_item("remove_symbols", cfg.remove_symbols)?;
-    d.set_item("remove_cjk_compat", cfg.remove_cjk_compat)?;
-    d.set_item("unify_quotes", cfg.unify_quotes)?;
-    d.set_item("protect_urls", cfg.protect.urls)?;
-    d.set_item("protect_emails", cfg.protect.emails)?;
-    d.set_item("protect_mentions", cfg.protect.mentions)?;
-    d.set_item("protect_hashtags", cfg.protect.hashtags)?;
-    match &cfg.emoji_action {
-        EmojiAction::Keep => {
-            d.set_item("emoji", "keep")?;
-            d.set_item("emoji_placeholder", py.None())?;
-        }
-        EmojiAction::Remove => {
-            d.set_item("emoji", "remove")?;
-            d.set_item("emoji_placeholder", py.None())?;
-        }
-        EmojiAction::Replace(s) => {
-            d.set_item("emoji", "keep")?;
-            d.set_item("emoji_placeholder", s.as_ref())?;
-        }
-    }
-    match &cfg.url_wrap {
-        Some((p, s)) => d.set_item("url_wrap", PyTuple::new(py, [p.as_ref(), s.as_ref()])?)?,
-        None => d.set_item("url_wrap", py.None())?,
+    for (k, v) in cfg.entries() {
+        d.set_item(k, value_to_py(py, v)?)?;
     }
     Ok(d)
 }
@@ -215,14 +104,11 @@ impl PyNormalizer {
         if let Some(opts) = options {
             for (k, v) in opts.iter() {
                 let key: String = k.extract()?;
-                apply_option(&mut config, &key, &v)?;
+                let value = py_to_value(&key, &v)?;
+                config.set(&key, value).map_err(config_err)?;
             }
         }
-        if config.kansuji_to_arabic && config.arabic_to_kansuji {
-            return Err(PyValueError::new_err(
-                "kansuji_to_arabic and arabic_to_kansuji cannot both be enabled",
-            ));
-        }
+        config.validate().map_err(config_err)?;
         Ok(Self {
             inner: CoreNormalizer::from_config(config),
         })

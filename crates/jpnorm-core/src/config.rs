@@ -321,3 +321,376 @@ impl Default for Config {
         Self::neologdn_compat()
     }
 }
+
+/// [`Config::set`] / [`Config::get`] で使う、文字列キー設定の値。
+///
+/// Python / wasm バインディングや CLI、設定ファイルのように「キー名と値」で
+/// 設定を扱いたい場面向け。キー一覧は [`Config::KEYS`]。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigValue {
+    /// 真偽値。
+    Bool(bool),
+    /// 非負整数 (`repeat_limit`)。
+    Int(usize),
+    /// 文字列 (`kana`, `emoji`, `emoji_placeholder`)。
+    Str(String),
+    /// 文字列ペア (`url_wrap` の prefix / suffix)。
+    Pair(String, String),
+    /// 未設定 (`repeat_limit` / `emoji_placeholder` / `url_wrap` の無効化)。
+    None,
+}
+
+impl From<bool> for ConfigValue {
+    fn from(v: bool) -> Self {
+        Self::Bool(v)
+    }
+}
+
+impl From<usize> for ConfigValue {
+    fn from(v: usize) -> Self {
+        Self::Int(v)
+    }
+}
+
+impl From<&str> for ConfigValue {
+    fn from(v: &str) -> Self {
+        Self::Str(v.to_owned())
+    }
+}
+
+impl From<String> for ConfigValue {
+    fn from(v: String) -> Self {
+        Self::Str(v)
+    }
+}
+
+/// [`Config::set`] / [`Config::validate`] のエラー。
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ConfigError {
+    /// 存在しないキー。
+    UnknownKey(String),
+    /// 値の型が違う。
+    WrongType {
+        /// キー名。
+        key: &'static str,
+        /// 期待する型の説明。
+        expected: &'static str,
+    },
+    /// 型は合っているが値が不正、または設定同士が矛盾している。
+    InvalidValue {
+        /// キー名。
+        key: &'static str,
+        /// 何が不正か。
+        message: String,
+    },
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownKey(k) => write!(f, "unknown option {k:?}"),
+            Self::WrongType { key, expected } => write!(f, "option {key:?} must be {expected}"),
+            Self::InvalidValue { key, message } => write!(f, "option {key:?}: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+const KANA_CHOICES: [(&str, KanaAction); 3] = [
+    ("keep", KanaAction::Keep),
+    ("hira_to_kata", KanaAction::HiraToKata),
+    ("kata_to_hira", KanaAction::KataToHira),
+];
+
+fn expect_bool(key: &'static str, v: ConfigValue) -> Result<bool, ConfigError> {
+    match v {
+        ConfigValue::Bool(b) => Ok(b),
+        _ => Err(ConfigError::WrongType {
+            key,
+            expected: "bool",
+        }),
+    }
+}
+
+fn expect_str(key: &'static str, v: ConfigValue) -> Result<String, ConfigError> {
+    match v {
+        ConfigValue::Str(s) => Ok(s),
+        _ => Err(ConfigError::WrongType {
+            key,
+            expected: "str",
+        }),
+    }
+}
+
+impl Config {
+    /// [`set`](Self::set) / [`get`](Self::get) で使える全キー。
+    pub const KEYS: &'static [&'static str] = &[
+        "normalize_newlines",
+        "remove_zero_width",
+        "remove_control",
+        "remove_bidi_control",
+        "kansuji_to_arabic",
+        "arabic_to_kansuji",
+        "canonicalize_numbers",
+        "nfkc",
+        "halfwidth_kana_to_fullwidth",
+        "kana",
+        "unify_hyphens",
+        "unify_tildes",
+        "unify_prolonged",
+        "collapse_prolonged_run",
+        "repeat_limit",
+        "collapse_spaces",
+        "trim",
+        "expand_cjk_compat",
+        "remove_symbols",
+        "remove_cjk_compat",
+        "unify_quotes",
+        "protect_urls",
+        "protect_emails",
+        "protect_mentions",
+        "protect_hashtags",
+        "emoji",
+        "emoji_placeholder",
+        "url_wrap",
+    ];
+
+    /// 文字列キーで設定値を書き換える。
+    ///
+    /// `url_wrap` にペアを設定すると `protect_urls` も有効になる。
+    /// `emoji` は `"keep"` / `"remove"`、`emoji_placeholder` は置換文字列 (None で解除)。
+    pub fn set(&mut self, key: &str, value: ConfigValue) -> Result<(), ConfigError> {
+        // KEYS の &'static str に寄せてエラー型に載せる。
+        let Some(&key) = Self::KEYS.iter().find(|k| **k == key) else {
+            return Err(ConfigError::UnknownKey(key.to_owned()));
+        };
+        match key {
+            "normalize_newlines" => self.normalize_newlines = expect_bool(key, value)?,
+            "remove_zero_width" => self.remove_zero_width = expect_bool(key, value)?,
+            "remove_control" => self.remove_control = expect_bool(key, value)?,
+            "remove_bidi_control" => self.remove_bidi_control = expect_bool(key, value)?,
+            "kansuji_to_arabic" => self.kansuji_to_arabic = expect_bool(key, value)?,
+            "arabic_to_kansuji" => self.arabic_to_kansuji = expect_bool(key, value)?,
+            "canonicalize_numbers" => self.canonicalize_numbers = expect_bool(key, value)?,
+            "nfkc" => self.nfkc = expect_bool(key, value)?,
+            "halfwidth_kana_to_fullwidth" => {
+                self.halfwidth_kana_to_fullwidth = expect_bool(key, value)?
+            }
+            "kana" => {
+                let s = expect_str(key, value)?;
+                self.kana = KANA_CHOICES
+                    .iter()
+                    .find(|(name, _)| *name == s)
+                    .map(|(_, a)| *a)
+                    .ok_or_else(|| ConfigError::InvalidValue {
+                        key,
+                        message: format!(
+                            "must be one of keep, hira_to_kata, kata_to_hira (got {s:?})"
+                        ),
+                    })?;
+            }
+            "unify_hyphens" => self.unify_hyphens = expect_bool(key, value)?,
+            "unify_tildes" => self.unify_tildes = expect_bool(key, value)?,
+            "unify_prolonged" => self.unify_prolonged = expect_bool(key, value)?,
+            "collapse_prolonged_run" => self.collapse_prolonged_run = expect_bool(key, value)?,
+            "repeat_limit" => {
+                self.repeat_limit = match value {
+                    ConfigValue::None => None,
+                    ConfigValue::Int(0) => {
+                        return Err(ConfigError::InvalidValue {
+                            key,
+                            message: "must be >= 1 (use None to disable)".to_owned(),
+                        });
+                    }
+                    ConfigValue::Int(n) => Some(n),
+                    _ => {
+                        return Err(ConfigError::WrongType {
+                            key,
+                            expected: "int >= 1 or None",
+                        });
+                    }
+                }
+            }
+            "collapse_spaces" => self.collapse_spaces = expect_bool(key, value)?,
+            "trim" => self.trim = expect_bool(key, value)?,
+            "expand_cjk_compat" => self.expand_cjk_compat = expect_bool(key, value)?,
+            "remove_symbols" => self.remove_symbols = expect_bool(key, value)?,
+            "remove_cjk_compat" => self.remove_cjk_compat = expect_bool(key, value)?,
+            "unify_quotes" => self.unify_quotes = expect_bool(key, value)?,
+            "protect_urls" => self.protect.urls = expect_bool(key, value)?,
+            "protect_emails" => self.protect.emails = expect_bool(key, value)?,
+            "protect_mentions" => self.protect.mentions = expect_bool(key, value)?,
+            "protect_hashtags" => self.protect.hashtags = expect_bool(key, value)?,
+            "emoji" => {
+                let s = expect_str(key, value)?;
+                self.emoji_action = match s.as_str() {
+                    "keep" => EmojiAction::Keep,
+                    "remove" => EmojiAction::Remove,
+                    _ => {
+                        return Err(ConfigError::InvalidValue {
+                            key,
+                            message: format!(
+                                "must be keep or remove (got {s:?}); use emoji_placeholder to replace"
+                            ),
+                        });
+                    }
+                }
+            }
+            "emoji_placeholder" => {
+                self.emoji_action = match value {
+                    // None は「置換を解除」。Remove 設定を Keep に戻してしまわないよう、
+                    // 置換中のときだけ Keep に戻す (entries() の往復が壊れないように)。
+                    ConfigValue::None => match &self.emoji_action {
+                        EmojiAction::Replace(_) => EmojiAction::Keep,
+                        other => other.clone(),
+                    },
+                    ConfigValue::Str(s) => EmojiAction::replace(s),
+                    _ => {
+                        return Err(ConfigError::WrongType {
+                            key,
+                            expected: "str or None",
+                        });
+                    }
+                }
+            }
+            "url_wrap" => {
+                self.url_wrap = match value {
+                    ConfigValue::None => None,
+                    ConfigValue::Pair(p, s) => {
+                        self.protect.urls = true;
+                        Some((Cow::Owned(p), Cow::Owned(s)))
+                    }
+                    _ => {
+                        return Err(ConfigError::WrongType {
+                            key,
+                            expected: "a (prefix, suffix) pair or None",
+                        });
+                    }
+                }
+            }
+            _ => unreachable!("key is in KEYS"),
+        }
+        Ok(())
+    }
+
+    /// 文字列キーで設定値を読む。未知のキーは `None`。
+    pub fn get(&self, key: &str) -> Option<ConfigValue> {
+        use ConfigValue as V;
+        Some(match key {
+            "normalize_newlines" => V::Bool(self.normalize_newlines),
+            "remove_zero_width" => V::Bool(self.remove_zero_width),
+            "remove_control" => V::Bool(self.remove_control),
+            "remove_bidi_control" => V::Bool(self.remove_bidi_control),
+            "kansuji_to_arabic" => V::Bool(self.kansuji_to_arabic),
+            "arabic_to_kansuji" => V::Bool(self.arabic_to_kansuji),
+            "canonicalize_numbers" => V::Bool(self.canonicalize_numbers),
+            "nfkc" => V::Bool(self.nfkc),
+            "halfwidth_kana_to_fullwidth" => V::Bool(self.halfwidth_kana_to_fullwidth),
+            "kana" => V::Str(
+                KANA_CHOICES
+                    .iter()
+                    .find(|(_, a)| *a == self.kana)
+                    .map(|(name, _)| (*name).to_owned())
+                    .unwrap_or_default(),
+            ),
+            "unify_hyphens" => V::Bool(self.unify_hyphens),
+            "unify_tildes" => V::Bool(self.unify_tildes),
+            "unify_prolonged" => V::Bool(self.unify_prolonged),
+            "collapse_prolonged_run" => V::Bool(self.collapse_prolonged_run),
+            "repeat_limit" => self.repeat_limit.map_or(V::None, V::Int),
+            "collapse_spaces" => V::Bool(self.collapse_spaces),
+            "trim" => V::Bool(self.trim),
+            "expand_cjk_compat" => V::Bool(self.expand_cjk_compat),
+            "remove_symbols" => V::Bool(self.remove_symbols),
+            "remove_cjk_compat" => V::Bool(self.remove_cjk_compat),
+            "unify_quotes" => V::Bool(self.unify_quotes),
+            "protect_urls" => V::Bool(self.protect.urls),
+            "protect_emails" => V::Bool(self.protect.emails),
+            "protect_mentions" => V::Bool(self.protect.mentions),
+            "protect_hashtags" => V::Bool(self.protect.hashtags),
+            "emoji" => V::Str(
+                match self.emoji_action {
+                    EmojiAction::Remove => "remove",
+                    _ => "keep",
+                }
+                .to_owned(),
+            ),
+            "emoji_placeholder" => match &self.emoji_action {
+                EmojiAction::Replace(s) => V::Str(s.to_string()),
+                _ => V::None,
+            },
+            "url_wrap" => match &self.url_wrap {
+                Some((p, s)) => V::Pair(p.to_string(), s.to_string()),
+                None => V::None,
+            },
+            _ => return None,
+        })
+    }
+
+    /// 全キーと現在値の一覧 ([`KEYS`](Self::KEYS) の順)。
+    pub fn entries(&self) -> Vec<(&'static str, ConfigValue)> {
+        Self::KEYS
+            .iter()
+            .map(|k| (*k, self.get(k).expect("key is in KEYS")))
+            .collect()
+    }
+
+    /// 設定同士の矛盾を検査する。
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.kansuji_to_arabic && self.arabic_to_kansuji {
+            return Err(ConfigError::InvalidValue {
+                key: "arabic_to_kansuji",
+                message: "kansuji_to_arabic and arabic_to_kansuji cannot both be enabled"
+                    .to_owned(),
+            });
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_get_roundtrip_all_keys() {
+        let base = Config::for_compare();
+        let mut rebuilt = Config::none();
+        for (k, v) in base.entries() {
+            rebuilt.set(k, v).unwrap();
+        }
+        assert_eq!(rebuilt, base);
+        assert_eq!(base.entries().len(), Config::KEYS.len());
+    }
+
+    #[test]
+    fn set_errors() {
+        let mut c = Config::none();
+        assert!(matches!(
+            c.set("bogus", true.into()),
+            Err(ConfigError::UnknownKey(_))
+        ));
+        assert!(matches!(
+            c.set("nfkc", "yes".into()),
+            Err(ConfigError::WrongType { .. })
+        ));
+        assert!(matches!(
+            c.set("kana", "x".into()),
+            Err(ConfigError::InvalidValue { .. })
+        ));
+        assert!(matches!(
+            c.set("repeat_limit", 0usize.into()),
+            Err(ConfigError::InvalidValue { .. })
+        ));
+        c.set("url_wrap", ConfigValue::Pair("<".into(), ">".into()))
+            .unwrap();
+        assert!(c.protect.urls);
+        c.set("emoji_placeholder", "_".into()).unwrap();
+        assert_eq!(c.emoji_action, EmojiAction::replace("_"));
+        c.set("kansuji_to_arabic", true.into()).unwrap();
+        c.set("arabic_to_kansuji", true.into()).unwrap();
+        assert!(c.validate().is_err());
+    }
+}

@@ -22,7 +22,7 @@ pub mod pipeline;
 #[doc(hidden)]
 pub mod test_fixtures;
 
-pub use config::{Config, ParsePresetError, Preset};
+pub use config::{Config, ConfigError, ConfigValue, ParsePresetError, Preset};
 pub use l2_script::kana::KanaAction;
 pub use l3_lexical::{SynonymDict, SynonymDictError};
 pub use l4_extra::emoji::EmojiAction;
