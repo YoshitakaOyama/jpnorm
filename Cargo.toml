@@ -22,7 +22,7 @@ categories = ["text-processing", "internationalization"]
 jpnorm-core = { path = "crates/jpnorm-core", version = "0.1.0" }
 jpnorm-dict = { path = "crates/jpnorm-dict", version = "0.1.0" }
 unicode-normalization = "0.1"
-daachorse = "1.0"
+daachorse = "5.0"
 criterion = { version = "0.8", features = ["html_reports"] }
 # `extension-module` は pyproject.toml ([tool.maturin] features) 側で有効化する。
 # ここで常時有効にすると `cargo test --workspace` がリンクできなくなる。
