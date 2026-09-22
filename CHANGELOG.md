@@ -5,7 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-22
+
+初の「使える」リリース。Python API の全面拡充、CLI、ブラウザプレイグラウンドを追加。
+
 ### Added
+
+- **CLI**: `jpnorm` コマンド (`pipx install jpnorm`)。標準入力/ファイル/引数を正規化、
+  `--preset` / `--set key=value` / `--dict` / `--sudachi` / `--json` / `--show-config`。
+- **プレイグラウンド**: <https://yoshitakaoyama.github.io/jpnorm/> でブラウザ上から全プリセットを比較・
+  フラグを調整できる (wasm ビルド、`crates/jpnorm-wasm`)。
+- Rust: 文字列キーで設定を読み書きする `Config::set` / `get` / `entries` / `validate` と
+  `Config::KEYS`, `ConfigValue`, `ConfigError`。Python / wasm / CLI がこれを共有する。
+- `scripts/bench-vs-neologdn.py`: neologdn との速度比較 (README に結果を掲載)。
 
 - Python: `Normalizer(preset=None, **options)` で個別フラグをキーワード引数で指定できるようになった。
   有効なキーは `Normalizer.config` と同じで、`Normalizer(**n.config)` で複製できる。
@@ -75,7 +87,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - 初回リリース。
 
-[Unreleased]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.4...v0.1.0
 [0.0.4]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.1...v0.0.2

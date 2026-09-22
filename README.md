@@ -9,7 +9,10 @@
 Rust 製コアを Python から使います。neologdn の置き換えから、検索前処理、LLM 出力の評価、
 名寄せまで、プリセットを選ぶだけで始められ、必要ならフラグ単位で細かく調整できます。
 
-*Fast, configurable Japanese text normalization. Rust core with Python bindings.*
+*Fast, configurable Japanese text normalization. Rust core with Python bindings.
+Pick a preset (`neologdn_compat`, `for_search`, `for_compare`, `for_display`) or tune 28 flags;
+protects URLs / emails / mentions, handles emoji, converts kanji numerals, applies custom
+synonym dictionaries. 3 to 5 times faster than neologdn.*
 
 ```python
 import jpnorm
@@ -17,6 +20,8 @@ import jpnorm
 jpnorm.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！")
 # => 'ハンカクカナ と 全角 !!'
 ```
+
+**ブラウザで試す →** <https://yoshitakaoyama.github.io/jpnorm/> (テキストを貼ると全プリセットの結果が並びます)
 
 ## こんなときに使います
 
@@ -43,6 +48,7 @@ uv add jpnorm
 
 Python 3.10 以上。Linux (x86_64 / aarch64)・macOS (x86_64 / arm64)・Windows (x64) の
 wheel を配布しているので、Rust ツールチェーンは不要です。
+コマンドラインだけ使いたい場合は `pipx install jpnorm` で `jpnorm` コマンドが入ります。
 
 ## ユースケース別ガイド
 
@@ -254,6 +260,35 @@ n.config["nfkc"]   # => True
 
 `normalize` / `normalize_batch` は処理中に GIL を解放するので、スレッドプールで並列化できます。
 
+## コマンドラインで使う
+
+```bash
+echo "ﾊﾝｶｸｶﾅ　と  全角  ！！" | jpnorm
+# ハンカクカナ と 全角 !!
+
+jpnorm -p for_search --set emoji=keep --set kana=kata_to_hira "スゴーーーイ😀"
+# すごーい😀
+
+jpnorm -p for_compare --files --dict brands.json input.txt > normalized.txt
+jpnorm --json "ｶﾅ"            # {"input": "ｶﾅ", "output": "カナ"}
+jpnorm -p for_compare --show-config   # 実際に使う設定を JSON で表示
+jpnorm --list-presets
+```
+
+## パフォーマンス
+
+neologdn (C++ 実装) と同じ入力で比較したスループットです
+(`scripts/bench-vs-neologdn.py`、Apple Silicon、Python 3.12)。
+
+| 入力 | neologdn | jpnorm neologdn_compat | jpnorm for_search |
+|---|---:|---:|---:|
+| tweet (~100B) | 15 MB/s | 42 MB/s (2.9x) | 29 MB/s (2.0x) |
+| paragraph (~500B) | 17 MB/s | 70 MB/s (4.1x) | 41 MB/s (2.4x) |
+| large (~32KB) | 17 MB/s | 88 MB/s (5.3x) | 45 MB/s (2.7x) |
+
+`for_search` は URL 保護・絵文字除去・機種依存文字展開が加わるぶん `neologdn_compat` より遅くなります。
+`normalize` / `normalize_batch` は GIL を解放するので、スレッドプールでさらに並列化できます。
+
 ## 他のライブラリとの違い
 
 | | jpnorm | neologdn | jaconv / mojimoji | `unicodedata.normalize("NFKC")` |
@@ -307,6 +342,9 @@ cargo test --workspace       # Rust テスト
 cargo clippy --workspace --all-targets -- -D warnings
 uv run ruff check . && uv run mypy
 cargo bench -p jpnorm-core   # ベンチマーク (criterion)
+uv run --with neologdn scripts/bench-vs-neologdn.py   # neologdn との比較表
+wasm-pack build crates/jpnorm-wasm --target web --release --out-dir ../../playground/pkg --no-typescript
+python -m http.server -d playground 8765   # プレイグラウンドをローカルで開く
 ```
 
 Rust ソースを変更したら `uv sync` で再ビルドされます。
