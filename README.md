@@ -10,9 +10,11 @@ Rust 製コアを Python から使います。neologdn の置き換えから、�
 名寄せまで、プリセットを選ぶだけで始められ、必要ならフラグ単位で細かく調整できます。
 
 *Fast, configurable Japanese text normalization. Rust core with Python bindings.
-Pick a preset (`neologdn_compat`, `for_search`, `for_compare`, `for_display`) or tune 28 flags;
-protects URLs / emails / mentions, handles emoji, converts kanji numerals, applies custom
-synonym dictionaries. 3 to 5 times faster than neologdn.*
+Pick a preset (`neologdn_compat`, `for_search`, `for_compare`, `for_display`) or tune 37 flags;
+unifies old/variant kanji (國→国, 髙→高), katakana loanword spellings (ヴァ→バ, trailing ー),
+iteration marks (人々→人人), era years (令和6年→2024年); protects URLs / emails / mentions,
+handles emoji, converts kanji numerals, applies custom synonym dictionaries.
+3 to 5 times faster than neologdn.*
 
 ```python
 import jpnorm
@@ -27,7 +29,8 @@ jpnorm.normalize("ﾊﾝｶｸｶﾅ　と  全角  ！！")
 
 日本語には「同じ意味なのに文字列としては別物」になる書き方が大量にあります。
 半角カナと全角カナ、全角英数と半角英数、`ー` と `〜` と `-`、`㈱` と `(株)`、
-`三百二十円` と `320円`、`幽☆遊☆白書` と `幽白`……。
+`三百二十円` と `320円`、`コンピューター` と `コンピュータ`、`ヴァイオリン` と `バイオリン`、
+`渡邊` と `渡辺`、`髙橋` と `高橋`、`人々` と `人人`、`令和6年` と `2024年`、`幽☆遊☆白書` と `幽白`……。
 これらを放置すると、次のような問題が起きます。
 
 | 困りごと | 何が起きているか | jpnorm でどうするか |
@@ -64,13 +67,25 @@ n = Normalizer("for_search")
 
 docs = ["ＰＹＴＨＯＮ入門 〜〜 初心者向け🔰", "python 入門（初心者向け）"]
 n.normalize_batch(docs)
-# => ['PYTHON入門 〜 初心者向け', 'python 入門(初心者向け)']
+# => ['python入門 〜 初心者向け', 'python 入門(初心者向け)']
 
 n.normalize("詳細は https://example.com/Docs?Q=1 を参照 📎")
 # => '詳細は https://example.com/Docs?Q=1 を参照'   ← URL はそのまま
 ```
 
-大文字小文字の統一は用途依存なので jpnorm は行いません。必要なら `.lower()` を重ねてください。
+検索でヒット落ちの原因になりやすい「同じ語の別表記」も、辞書なしで同じ形に落とします。
+
+```python
+n.normalize("コンピューター")      # => 'コンピュータ'   ← 末尾長音 (JIS Z 8301 方式)
+n.normalize("ヴァイオリン")        # => 'バイオリン'
+n.normalize("ウェブサーバー")      # => 'ウエブサーバ'
+n.normalize("渡邊さんと髙橋さん")  # => '渡辺さんと高橋さん'   ← 旧字体・異体字
+n.normalize("人々の舊字體")        # => '人人の旧字体'   ← 繰り返し記号・旧字体
+n.normalize("令和6年度予算")       # => '2024年度予算'   ← 元号
+```
+
+英字は小文字に揃えます (`case="keep"` で無効化)。日本語と英数字の間の空白は残します
+(`cjk_spacing="remove"` で削除)。
 
 ### 2. LLM / OCR / 音声認識の出力評価 (`for_compare` + `compare`)
 
@@ -84,7 +99,8 @@ n = Normalizer("for_compare")
 
 n.normalize("合計：￥１，２００（税込）")    # => '合計¥1200税込'
 n.normalize("合計:¥1,200(税込)")            # => '合計¥1200税込'   ← 同じ形になる
-n.normalize("第一章　はじめに")             # => '第1章 はじめに'
+n.normalize("第一章　はじめに")             # => '第1章はじめに'
+n.normalize("売上 1万2千円 (令和六年)")      # => '売上12000円2024年'
 
 compare("ﾃｽﾄ結果：１２３", "テスト結果:123", strategy="exact", normalizer=n).matched
 # => True
@@ -126,7 +142,8 @@ n = Normalizer("for_compare").with_custom_dict({
 })
 
 n.normalize("㈱サンプル")            # => '株式会社サンプル'
-n.normalize("幽☆遊☆白書 第１巻")     # => '幽遊白書 第1巻'
+n.normalize("幽☆遊☆白書 第１巻")     # => '幽遊白書第1巻'
+n.normalize("渡邊 太郎")             # => '渡辺太郎'   ← 異体字は辞書なしで統一される
 
 # 重複検出はキーを揃えるだけ
 records = ["㈱サンプル", "サンプル社", "株式会社サンプル"]
@@ -208,13 +225,13 @@ n = Normalizer("neologdn_compat", protect_urls=True, emoji="remove")
 
 ## プリセット早見表
 
-| 名前 | いつ使うか | NFKC | 記号統一 | URL 保護 | 絵文字 | 漢数字→数字 | 記号除去 |
-|---|---|:-:|:-:|:-:|:-:|:-:|:-:|
-| `none` | 自分でフラグを積む | | | | 残す | | |
-| `for_display` | UI 表示・投稿プレビュー | | 長音のみ | | 残す | | |
-| `neologdn_compat` | neologdn 置き換え (既定) | ✓ | ✓ | | 残す | | |
-| `for_search` | 検索索引・RAG | ✓ | ✓ | ✓ | 除去 | | |
-| `for_compare` | 精度評価・名寄せ・重複検出 | ✓ | ✓ | | 除去 | ✓ | ✓ |
+| 名前 | いつ使うか | NFKC | 記号統一 | 旧字体・異体字・々 | 外来語統一 | 小文字化 | 元号→西暦 | URL 保護 | 絵文字 | 漢数字→数字 | 記号除去 | 日英間の空白 |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `none` | 自分でフラグを積む | | | | | | | | 残す | | | 残す |
+| `for_display` | UI 表示・投稿プレビュー | | 長音のみ | | | | | | 残す | | | 残す |
+| `neologdn_compat` | neologdn 置き換え (既定) | ✓ | ✓ | | | | | | 残す | | | 残す |
+| `for_search` | 検索索引・RAG | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 除去 | | | 残す |
+| `for_compare` | 精度評価・名寄せ・重複検出 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | 除去 | ✓ | ✓ | 削除 |
 
 一覧は `Normalizer.presets()` で取得できます。迷ったら、**表示なら `for_display`、
 それ以外は `for_search`** から始めて、必要に応じて `for_compare` に寄せるのがおすすめです。
@@ -245,13 +262,22 @@ n.config["nfkc"]   # => True
 | `nfkc` | bool | Unicode NFKC (全角英数→半角など) |
 | `halfwidth_kana_to_fullwidth` | bool | 半角カナ→全角カナ |
 | `kana` | `"keep"` / `"hira_to_kata"` / `"kata_to_hira"` | ひらがな⇄カタカナ統一 |
+| `case` | `"keep"` / `"lower"` / `"upper"` | 英字の大文字小文字 |
+| `kyujitai_to_shinjitai` | bool | 旧字体→新字体 (國→国、體→体、310 字) |
+| `unify_itaiji` | bool | 人名・地名の異体字を代表字に (髙→高、﨑→崎、濵→浜) |
+| `remove_variation_selectors` | bool | 異体字セレクタ (IVS) の除去 |
+| `expand_iteration_marks` | bool | 々ゝゞヽヾ の展開 (人々→人人) |
+| `unify_loanword_kana` | bool | ヴァ→バ、ウェ→ウエ、ティ→テイ、ヂ→ジ など |
+| `strip_trailing_prolonged` | bool | 4 文字以上のカタカナ語の末尾長音を落とす (サーバー→サーバ) |
+| `era_to_western` | bool | 令和6年 / R6年 / 令和六年 → 2024年 |
+| `cjk_spacing` | `"keep"` / `"remove"` / `"insert"` | 日本語と英数字の間の空白を残す / 消す / 入れる |
 | `unify_hyphens` / `unify_tildes` / `unify_prolonged` / `unify_quotes` | bool | 記号バリエーションの統一 |
 | `collapse_prolonged_run` | bool | 連続する長音符・チルダを 1 つに |
 | `repeat_limit` | int / None | 同一文字の最大連続数 (英数字は対象外) |
 | `collapse_spaces` / `trim` | bool | 空白の畳み込み・前後トリム |
 | `expand_cjk_compat` / `remove_cjk_compat` | bool | 機種依存文字 (㈱①㌔) の展開 / 除去 |
 | `remove_symbols` | bool | 句読点・記号の除去 |
-| `kansuji_to_arabic` / `arabic_to_kansuji` | bool | 漢数字⇄算用数字 (排他) |
+| `kansuji_to_arabic` / `arabic_to_kansuji` | bool | 漢数字⇄算用数字 (排他)。`1万2千` `1.5億` のような混在も解釈 |
 | `canonicalize_numbers` | bool | `1,200` / `1200.00` → `1200` |
 | `protect_urls` / `protect_emails` / `protect_mentions` / `protect_hashtags` | bool | 保護領域 |
 | `url_wrap` | (str, str) / None | 保護した URL を prefix/suffix で囲む |
@@ -295,6 +321,9 @@ neologdn (C++ 実装) と同じ入力で比較したスループットです
 |---|:-:|:-:|:-:|:-:|
 | 半角カナ・全角英数の統一 | ✓ | ✓ | ✓ | ✓ |
 | 長音・ハイフン・チルダの統一 | ✓ | ✓ | | |
+| 旧字体・異体字・繰り返し記号 (々) | ✓ | | | |
+| カタカナ外来語のゆれ (ヴ、末尾長音) | ✓ | | | |
+| 元号→西暦、混在数値 (1万2千) | ✓ | | | |
 | 用途別プリセット / フラグ設定 | ✓ | | | |
 | URL / メール / @mention の保護 | ✓ | | | |
 | 絵文字の除去・置換 | ✓ | | | |

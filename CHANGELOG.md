@@ -5,6 +5,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 漢字のゆれ: `kyujitai_to_shinjitai` (旧字体→新字体、310 字)、`unify_itaiji` (髙→高、﨑→崎、渡邊→渡辺 など
+  人名・地名の異体字)、`remove_variation_selectors` (IVS 除去)、`expand_iteration_marks` (人々→人人、いすゞ→いすず)。
+- カタカナ外来語のゆれ: `unify_loanword_kana` (ヴァ→バ、ウェ→ウエ、ティ→テイ、ヂ→ジ など) と
+  `strip_trailing_prolonged` (4 文字以上のカタカナ語の末尾長音を落とす。JIS Z 8301 / kuromoji_stemmer 方式)。
+- `case` (`keep` / `lower` / `upper`)、`cjk_spacing` (`keep` / `remove` / `insert`)、`era_to_western`
+  (令和6年 / 令和六年 / R6年 → 2024年)。
+- `kansuji_to_arabic` がアラビア数字と位取り漢字の混在 (`1万2千`, `1.5億`, `12万3456`, `1,200万`) を解釈するようになった。
+- Rust: 上記に対応する Builder メソッド (`kyujitai_to_shinjitai()`, `lowercase()`, `cjk_spacing(..)`, `era_to_western()` 等) と
+  `CaseAction` / `CjkSpacing` の再エクスポート。
+
+### Changed
+
+- **`for_search` の既定が変わった**: 旧字体・異体字・繰り返し記号・外来語の統一、末尾長音の除去、小文字化、
+  元号→西暦、異体字セレクタ除去が有効になった。索引を作り直さないと検索語側と食い違うので注意。
+- **`for_compare` の既定が変わった**: 上記に加えて日本語と英数字の間の空白を削除する (`cjk_spacing="remove"`)。
+- `neologdn_compat` と `for_display` は変更なし。
+
+### Fixed
+
+- `kansuji_to_arabic` が単独の位取り漢字を誤変換していた (`2千` → `21000`)。
+
 ## [0.1.0] - 2026-09-22
 
 初の「使える」リリース。Python API の全面拡充、CLI、ブラウザプレイグラウンドを追加。
