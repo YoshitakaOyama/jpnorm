@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "jpnorm"
-version = "0.0.4"
+version = "0.1.0"
 description = "日本語テキスト正規化ライブラリ / Fast, configurable Japanese text normalization"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
@@ -32,6 +32,9 @@ dependencies = []
 anthropic = ["anthropic>=0.40"]
 openai = ["openai>=1.0"]
 llm = ["jpnorm[anthropic,openai]"]
+
+[project.scripts]
+jpnorm = "jpnorm.cli:main"
 
 [project.urls]
 Repository = "https://github.com/YoshitakaOyama/jpnorm"
@@ -73,6 +76,9 @@ src = ["python", "tests/python"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E501"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
