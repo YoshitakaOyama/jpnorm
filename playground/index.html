@@ -86,7 +86,8 @@ import init, { presets, presetConfig, normalize, version } from "./pkg/jpnorm_wa
 const SAMPLES = [
   ["ツイート風", "ｶﾀｶﾅ と  全角 ！！ーーー 〜〜〜 wwwwww https://example.com/path?x=1 @alice #rust_lang 😀"],
   ["価格・数値", "価格：￥１，２００（税込）　合計は三百二十円、２０２４年３月２９日"],
-  ["名寄せ", "㈱サンプル / (株)サンプル / サンプル社 / 幽☆遊☆白書 と 幽白"],
+  ["名寄せ", "㈱サンプル / (株)サンプル / サンプル社 / 髙橋 と 高橋 / 渡邊 と 渡辺"],
+  ["外来語・旧字", "ヴァイオリンとバイオリン、コンピューターとコンピュータ、人々の舊字體、令和六年"],
   ["不可視文字", "ゼロ幅\u200b文字と\u202e制御\u0007文字\r\n改行"],
   ["neologdn", "ｵｰﾙｲﾝﾜﾝ ＡＢＣ 〜〜〜 ！！！ すごーーーーい"],
 ];
@@ -98,6 +99,12 @@ const DESC = {
   for_compare: "精度評価・名寄せ。漢数字→数字、記号除去",
 };
 
+const CHOICES = {
+  kana: ["keep", "hira_to_kata", "kata_to_hira"],
+  emoji: ["keep", "remove"],
+  case: ["keep", "lower", "upper"],
+  cjk_spacing: ["keep", "remove", "insert"],
+};
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
@@ -152,8 +159,8 @@ function buildFlags() {
       input = Object.assign(document.createElement("input"), { type: "checkbox", checked: cur });
       lab.append(input, document.createTextNode(k));
       input.onchange = () => { customFlags[k] = input.checked; renderCustom(); };
-    } else if (k === "kana" || k === "emoji") {
-      const opts = k === "kana" ? ["keep", "hira_to_kata", "kata_to_hira"] : ["keep", "remove"];
+    } else if (k in CHOICES) {
+      const opts = CHOICES[k];
       input = document.createElement("select");
       input.innerHTML = opts.map((o) => `<option ${o === cur ? "selected" : ""}>${o}</option>`).join("");
       lab.append(document.createTextNode(k), input);

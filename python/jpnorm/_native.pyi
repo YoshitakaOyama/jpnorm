@@ -16,6 +16,8 @@ PresetName = Literal[
     "for_compare",
 ]
 KanaOption = Literal["keep", "hira_to_kata", "kata_to_hira"]
+CaseOption = Literal["keep", "lower", "upper"]
+CjkSpacingOption = Literal["keep", "remove", "insert"]
 EmojiOption = Literal["keep", "remove"]
 DictFormat = Literal["json", "csv", "tsv"]
 
@@ -32,6 +34,15 @@ class NormalizerOptions(TypedDict, total=False):
     nfkc: bool
     halfwidth_kana_to_fullwidth: bool
     kana: KanaOption
+    kyujitai_to_shinjitai: bool
+    unify_itaiji: bool
+    remove_variation_selectors: bool
+    expand_iteration_marks: bool
+    unify_loanword_kana: bool
+    strip_trailing_prolonged: bool
+    case: CaseOption
+    cjk_spacing: CjkSpacingOption
+    era_to_western: bool
     unify_hyphens: bool
     unify_tildes: bool
     unify_prolonged: bool

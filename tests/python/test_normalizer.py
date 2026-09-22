@@ -190,3 +190,92 @@ def test_levenshtein_native():
 
 def test_version_is_exposed():
     assert isinstance(jpnorm.__version__, str) and jpnorm.__version__
+
+
+# ---- Tier 1: 語彙・表記の深さ ----
+
+
+def test_kyujitai_and_itaiji_options() -> None:
+    n = Normalizer("none", kyujitai_to_shinjitai=True, unify_itaiji=True)
+    assert (
+        n.normalize("舊字體の國語學と髙橋・﨑山・渡邊")
+        == "旧字体の国語学と高橋・崎山・渡辺"
+    )
+    assert Normalizer("none").normalize("髙橋") == "髙橋"
+
+
+def test_variation_selectors_removed_in_search_preset() -> None:
+    assert Normalizer("for_search").normalize("葛\U000e0100飾") == "葛飾"
+
+
+def test_iteration_marks_option() -> None:
+    n = Normalizer("none", expand_iteration_marks=True)
+    assert n.normalize("人々といすゞとこゝろ") == "人人といすずとこころ"
+
+
+def test_loanword_options() -> None:
+    n = Normalizer("none", unify_loanword_kana=True, strip_trailing_prolonged=True)
+    assert (
+        n.normalize("ヴァイオリンとコンピューターとウェブとキー")
+        == "バイオリンとコンピュータとウエブとキー"
+    )
+
+
+def test_case_option() -> None:
+    assert (
+        Normalizer("none", case="lower").normalize("Python と RUST") == "python と rust"
+    )
+    assert Normalizer("none", case="upper").normalize("Python") == "PYTHON"
+    with pytest.raises(ValueError, match="must be one of"):
+        Normalizer("none", case="title")  # type: ignore[typeddict-item]
+
+
+def test_cjk_spacing_option() -> None:
+    assert (
+        Normalizer("none", cjk_spacing="remove").normalize("Python と Rust で実装")
+        == "PythonとRustで実装"
+    )
+    assert (
+        Normalizer("none", cjk_spacing="insert").normalize("日本語text混在")
+        == "日本語 text 混在"
+    )
+
+
+def test_era_option() -> None:
+    n = Normalizer("none", era_to_western=True, kansuji_to_arabic=True)
+    assert n.normalize("令和六年とH30年度と昭和64年") == "2024年と2018年度と1989年"
+    assert (
+        Normalizer("none", era_to_western=True).normalize("令和の時代") == "令和の時代"
+    )
+
+
+def test_mixed_numerals_in_compare_preset() -> None:
+    n = Normalizer("for_compare")
+    assert n.normalize("1万2千円と1.5億と3千円") == "12000円と150000000と3000円"
+    assert n.normalize("2千") == "2000"
+
+
+def test_search_preset_unifies_common_variants() -> None:
+    n = Normalizer("for_search")
+    pairs = [
+        ("ＰＹＴＨＯＮ入門", "python 入門"),
+        ("コンピューター", "コンピュータ"),
+        ("ヴァイオリン", "バイオリン"),
+        ("渡邊", "渡辺"),
+        ("佐々木", "佐佐木"),
+        ("令和6年度", "2024年度"),
+    ]
+    for a, b in pairs:
+        assert n.normalize(a).replace(" ", "") == n.normalize(b).replace(" ", ""), (
+            a,
+            b,
+        )
+
+
+def test_config_round_trip_includes_new_keys() -> None:
+    n = Normalizer("for_compare")
+    cfg = n.config
+    for key in ["kyujitai_to_shinjitai", "case", "cjk_spacing", "era_to_western"]:
+        assert key in cfg
+    assert cfg["case"] == "lower" and cfg["cjk_spacing"] == "remove"
+    assert Normalizer(**cfg).config == cfg

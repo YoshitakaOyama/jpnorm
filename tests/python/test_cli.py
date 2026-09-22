@@ -34,7 +34,7 @@ def test_cli_normalizes_positional_text(capsys: pytest.CaptureFixture[str]) -> N
 
 def test_cli_reads_stdin_line_by_line(capsys: pytest.CaptureFixture[str]) -> None:
     out = run(["--preset", "for_search"], stdin="ｶﾅ😀\nＡＢＣ\n", capsys=capsys)
-    assert out == "カナ\nABC\n"
+    assert out == "カナ\nabc\n"
 
 
 def test_cli_set_overrides_flags(capsys: pytest.CaptureFixture[str]) -> None:

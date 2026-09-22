@@ -1,6 +1,8 @@
 """Type stubs for jpnorm."""
 
 from jpnorm._native import (
+    CaseOption as CaseOption,
+    CjkSpacingOption as CjkSpacingOption,
     DictFormat as DictFormat,
     EmojiOption as EmojiOption,
     KanaOption as KanaOption,
