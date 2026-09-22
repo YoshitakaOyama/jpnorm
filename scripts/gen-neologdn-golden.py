@@ -2,11 +2,11 @@
 """neologdn のゴールデン出力を生成する。
 
 実行例:
-    /tmp/kanon-venv/bin/python scripts/gen-neologdn-golden.py \
-        > tests/golden/neologdn.jsonl
+    uv run --with neologdn scripts/gen-neologdn-golden.py > tests/golden/neologdn.jsonl
 
 各行は `{"input": ..., "expected": ...}` の JSON。
 """
+
 from __future__ import annotations
 
 import json

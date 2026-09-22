@@ -3,11 +3,13 @@
 //! 代表的な日本語テキスト(ツイート風・長文・混在記号)に対して
 //! 各プリセットを適用した時の処理時間を計測する。
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use jpnorm_core::{Normalizer, Preset};
+use std::hint::black_box;
 
 /// 小さめのサンプル(ツイート風)。
-const TWEET: &str = "ｶﾀｶﾅ と  全角 ！！ーーー 〜〜〜 wwwwww https://example.com/path?x=1 @alice #rust_lang 😀";
+const TWEET: &str =
+    "ｶﾀｶﾅ と  全角 ！！ーーー 〜〜〜 wwwwww https://example.com/path?x=1 @alice #rust_lang 😀";
 
 /// 中くらいのサンプル(段落)。
 const PARAGRAPH: &str = "\

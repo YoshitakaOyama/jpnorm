@@ -51,8 +51,8 @@ impl std::error::Error for SudachiParseError {}
 #[derive(Debug)]
 struct Row<'a> {
     group_id: &'a str,
-    form_type: u8,   // col 4
-    variant_type: u8, // col 6
+    form_type: u8,     // col 4
+    variant_type: u8,  // col 6
     headword: &'a str, // col 8
 }
 
@@ -99,9 +99,7 @@ pub fn load_sudachi_synonyms(text: &str) -> Result<SynonymDict, SudachiParseErro
         }
         let headword = headword.into_owned();
 
-        let acc = groups
-            .entry(row.group_id.to_string())
-            .or_insert_with(GroupAcc::default);
+        let acc = groups.entry(row.group_id.to_string()).or_default();
         // 代表表記の判定: form_type=0 (代表語) かつ variant_type=0 (代表表記)
         if row.form_type == 0 && row.variant_type == 0 && acc.canonical.is_none() {
             acc.canonical = Some(headword.clone());
@@ -175,10 +173,7 @@ mod tests {
             dict.apply("パソコンを買った"),
             "パーソナルコンピュータを買った"
         );
-        assert_eq!(
-            dict.apply("JR東に乗る"),
-            "東日本旅客鉄道に乗る"
-        );
+        assert_eq!(dict.apply("JR東に乗る"), "東日本旅客鉄道に乗る");
     }
 
     #[test]

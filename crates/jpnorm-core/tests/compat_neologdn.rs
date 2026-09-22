@@ -52,8 +52,8 @@ fn load_golden() -> Vec<Case> {
     path.push("tests");
     path.push("golden");
     path.push("neologdn.jsonl");
-    let text =
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("golden not found at {path:?}: {e}"));
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("golden not found at {path:?}: {e}"));
     let mut cases = Vec::new();
     for line in text.lines() {
         let line = line.trim();

@@ -1,6 +1,6 @@
 //! 100+ ケースの正規化スナップショットテスト。
 //!
-//! 入力リストは `tests/normalize_cases_data.rs` (const `CASES`) と共有。
+//! 入力リストは `jpnorm_core::test_fixtures::NORMALIZE_CASES` と共有。
 //! 期待値は現在の実装の出力を一度ダンプして確定したもの。
 //! 挙動を変える PR では、まず `cargo run --example dump_normalize_cases -p jpnorm-core`
 //! を再実行して差分を確認し、意図した変更であればここを更新する。

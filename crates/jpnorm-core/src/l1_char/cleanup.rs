@@ -95,7 +95,10 @@ mod tests {
 
     #[test]
     fn newlines_unicode_breaks() {
-        assert_eq!(normalize_newlines("a\u{2028}b\u{2029}c\u{0085}d"), "a\nb\nc\nd");
+        assert_eq!(
+            normalize_newlines("a\u{2028}b\u{2029}c\u{0085}d"),
+            "a\nb\nc\nd"
+        );
     }
 
     #[test]

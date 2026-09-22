@@ -20,9 +20,7 @@ pub fn canonicalize(input: &str) -> String {
     while i < bytes.len() {
         // 数値トークンは [ASCII数字] で始まる。
         // 直前が ASCII 英字の場合は識別子の一部とみなし触らない(例: abc123)。
-        if bytes[i].is_ascii_digit()
-            && (i == 0 || !prev_is_word_char(out.as_bytes()))
-        {
+        if bytes[i].is_ascii_digit() && (i == 0 || !prev_is_word_char(out.as_bytes())) {
             let (token, consumed) = scan_number(&bytes[i..]);
             if consumed > 0 {
                 if let Some(normalized) = normalize_token(token) {
@@ -42,7 +40,8 @@ pub fn canonicalize(input: &str) -> String {
 }
 
 fn prev_is_word_char(out: &[u8]) -> bool {
-    out.last().is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+    out.last()
+        .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
 }
 
 /// `bytes` の先頭から数値らしきトークンを貪欲に切り出す。
@@ -55,7 +54,10 @@ fn scan_number(bytes: &[u8]) -> (&str, usize) {
     }
     // カンマ区切りを末尾に向けて拡張: `,DDD` の繰り返し
     let mut k = j;
-    while k + 3 < bytes.len() && bytes[k] == b',' && bytes[k + 1..k + 4].iter().all(|b| b.is_ascii_digit()) {
+    while k + 3 < bytes.len()
+        && bytes[k] == b','
+        && bytes[k + 1..k + 4].iter().all(|b| b.is_ascii_digit())
+    {
         // カンマ後の4桁目が数字だとグルーピング不正(1,2345 等) → 打ち切り。
         if k + 4 < bytes.len() && bytes[k + 4].is_ascii_digit() {
             break;
@@ -64,7 +66,11 @@ fn scan_number(bytes: &[u8]) -> (&str, usize) {
     }
     // 小数部
     let mut end = k;
-    if end < bytes.len() && bytes[end] == b'.' && end + 1 < bytes.len() && bytes[end + 1].is_ascii_digit() {
+    if end < bytes.len()
+        && bytes[end] == b'.'
+        && end + 1 < bytes.len()
+        && bytes[end + 1].is_ascii_digit()
+    {
         end += 1;
         while end < bytes.len() && bytes[end].is_ascii_digit() {
             end += 1;

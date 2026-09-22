@@ -8,4 +8,4 @@
 
 pub mod sudachi;
 
-pub use sudachi::{load_sudachi_synonyms, SudachiParseError};
+pub use sudachi::{SudachiParseError, load_sudachi_synonyms};

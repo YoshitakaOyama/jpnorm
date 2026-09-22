@@ -18,7 +18,11 @@ pub fn kansuji_to_arabic(input: &str) -> String {
                 i += 1;
             }
             let segment: String = chars[start..i].iter().collect();
-            let prev = if start == 0 { None } else { Some(chars[start - 1]) };
+            let prev = if start == 0 {
+                None
+            } else {
+                Some(chars[start - 1])
+            };
             let next = chars.get(i).copied();
             match parse_kansuji(&segment, prev, next) {
                 Some(v) => out.push_str(&v.to_string()),
@@ -104,7 +108,9 @@ fn parse_kansuji(s: &str, prev: Option<char>, next: Option<char>) -> Option<u128
     let chars: Vec<char> = s.chars().collect();
     let has_digit = chars.iter().any(|&c| digit_value(c).is_some());
     let has_small_unit = chars.iter().any(|&c| matches!(c, '十' | '百' | '千'));
-    let has_large_unit = chars.iter().any(|&c| matches!(c, '万' | '億' | '兆' | '京'));
+    let has_large_unit = chars
+        .iter()
+        .any(|&c| matches!(c, '万' | '億' | '兆' | '京'));
 
     // 「京」「兆」などが固有名詞(京都/東京/兆し等)として現れるケースを壊さないため、
     // 数字シグナル(各位の漢数字 or 十/百/千)が無い語は変換しない。

@@ -24,7 +24,6 @@ pub const NORMALIZE_CASES: &[(Preset, &str)] = &[
     (Preset::None, "   前後空白   "),
     (Preset::None, "ＡＢＣ１２３"),
     (Preset::None, "ｶﾀｶﾅ"),
-
     // ===== 2. NeologdnCompat: 基本 =====
     (Preset::NeologdnCompat, "hello world"),
     (Preset::NeologdnCompat, "ＡＢＣ１２３"),
@@ -63,7 +62,6 @@ pub const NORMALIZE_CASES: &[(Preset, &str)] = &[
     (Preset::NeologdnCompat, "カレーライス"),
     (Preset::NeologdnCompat, "ｶﾞｷﾞｸﾞｹﾞｺﾞ"),
     (Preset::NeologdnCompat, "ﾊﾟﾋﾟﾌﾟﾍﾟﾎﾟ"),
-
     // ===== 3. ForSearch =====
     (Preset::ForSearch, "hello world"),
     (Preset::ForSearch, "ＡＢＣ１２３"),
@@ -80,7 +78,6 @@ pub const NORMALIZE_CASES: &[(Preset, &str)] = &[
     (Preset::ForSearch, "連続あああああ"),
     (Preset::ForSearch, "改行\r\n混在\rCR"),
     (Preset::ForSearch, "  トリム  "),
-
     // ===== 4. ForDisplay =====
     (Preset::ForDisplay, "ｶﾀｶﾅ"),
     (Preset::ForDisplay, "ＡＢＣ"),
@@ -92,7 +89,6 @@ pub const NORMALIZE_CASES: &[(Preset, &str)] = &[
     (Preset::ForDisplay, "絵文字😀残る"),
     (Preset::ForDisplay, "㈱そのまま"),
     (Preset::ForDisplay, "“quotes”"),
-
     // ===== 5. ForCompare: 最積極 =====
     (Preset::ForCompare, "hello world"),
     (Preset::ForCompare, "ＡＢＣ１２３"),
@@ -145,32 +141,32 @@ pub const NORMALIZE_CASES: &[(Preset, &str)] = &[
     (Preset::ForCompare, "a"),
     // 混在複雑系
     (Preset::ForCompare, "【速報】東京で第一位！！！"),
-    (Preset::ForCompare, "2025年1月1日、新年あけましておめでとう🎍"),
+    (
+        Preset::ForCompare,
+        "2025年1月1日、新年あけましておめでとう🎍",
+    ),
     (Preset::ForCompare, "価格: ￥1,200(税込)"),
     (Preset::ForCompare, "Python と Rust で実装"),
     (Preset::ForCompare, "ｸﾞｯﾄﾞ！！ 絵文字😀 混じり"),
     (Preset::ForCompare, "ハイフン-‐−―—の統一"),
     (Preset::ForCompare, "連続    空白の    畳み込み"),
-
     // ===== 6. NeologdnCompat 追加境界系 =====
     (Preset::NeologdnCompat, "abc\u{00A0}def"), // NBSP
     (Preset::NeologdnCompat, "タブ\t残す"),
     (Preset::NeologdnCompat, "全角\u{3000}スペース"),
     (Preset::NeologdnCompat, "¥1,200"),
-    (Preset::NeologdnCompat, "𩸽"), // 非 BMP
+    (Preset::NeologdnCompat, "𩸽"),        // 非 BMP
     (Preset::NeologdnCompat, "\u{1F600}"), // 絵文字
     (Preset::NeologdnCompat, "〒100-0001"),
     (Preset::NeologdnCompat, "TEL:03-1234-5678"),
     (Preset::NeologdnCompat, "1+1=2"),
     (Preset::NeologdnCompat, "(株)テスト"),
-
     // ===== 7. ForSearch 追加 =====
     (Preset::ForSearch, "㍻30年"),
     (Preset::ForSearch, "Ⅰ章とⅡ章"),
     (Preset::ForSearch, "ＡＢＣＡＢＣ"),
     (Preset::ForSearch, "CO₂排出"),
     (Preset::ForSearch, "H₂O"),
-
     // ===== 8. ForCompare 追加長文 =====
     (Preset::ForCompare, "「東京」と『京都』は違う都市です。"),
     (Preset::ForCompare, "2025/01/01"),

@@ -8,12 +8,12 @@ members = [
 
 [workspace.package]
 version = "0.0.4"
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/yoshitakaoyama/jpnorm"
 homepage = "https://github.com/yoshitakaoyama/jpnorm"
-description = "世界一の日本語正規化ライブラリ / World-class Japanese text normalization"
+description = "日本語テキスト正規化ライブラリ / Fast, configurable Japanese text normalization"
 keywords = ["japanese", "nlp", "normalization", "text", "unicode"]
 categories = ["text-processing", "internationalization"]
 
@@ -22,8 +22,10 @@ jpnorm-core = { path = "crates/jpnorm-core", version = "0.0.4" }
 jpnorm-dict = { path = "crates/jpnorm-dict", version = "0.0.4" }
 unicode-normalization = "0.1"
 daachorse = "1.0"
-criterion = { version = "0.5", features = ["html_reports"] }
-pyo3 = { version = "0.28", features = ["extension-module", "generate-import-lib"] }
+criterion = { version = "0.8", features = ["html_reports"] }
+# `extension-module` は pyproject.toml ([tool.maturin] features) 側で有効化する。
+# ここで常時有効にすると `cargo test --workspace` がリンクできなくなる。
+pyo3 = { version = "0.29", features = ["generate-import-lib"] }
 
 [profile.release]
 lto = "thin"
