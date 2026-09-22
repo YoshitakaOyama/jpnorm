@@ -19,8 +19,12 @@ pub mod l2_script;
 pub mod l3_lexical;
 pub mod l4_extra;
 pub mod pipeline;
+#[doc(hidden)]
 pub mod test_fixtures;
 
-pub use config::{Config, Preset};
+pub use config::{Config, ParsePresetError, Preset};
+pub use l2_script::kana::KanaAction;
 pub use l3_lexical::{SynonymDict, SynonymDictError};
-pub use pipeline::{Normalizer, NormalizerBuilder};
+pub use l4_extra::emoji::EmojiAction;
+pub use l4_extra::protect::{Kind as ProtectKind, ProtectConfig};
+pub use pipeline::{NormalizedText, Normalizer, NormalizerBuilder, Segment};

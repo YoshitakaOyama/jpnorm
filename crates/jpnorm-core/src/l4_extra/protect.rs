@@ -28,7 +28,7 @@ pub struct Span {
 }
 
 /// どの種別を保護するかの設定。
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ProtectConfig {
     /// URL を保護する。
     pub urls: bool,
@@ -48,6 +48,16 @@ impl ProtectConfig {
             emails: true,
             mentions: true,
             hashtags: true,
+        }
+    }
+
+    /// 何も保護しない設定。
+    pub const fn none() -> Self {
+        Self {
+            urls: false,
+            emails: false,
+            mentions: false,
+            hashtags: false,
         }
     }
 
@@ -122,10 +132,9 @@ pub fn scan(input: &str, cfg: ProtectConfig) -> Vec<Span> {
 fn next_char_width(bytes: &[u8], i: usize) -> usize {
     // UTF-8 の先頭バイトから文字長を算出。
     let b = bytes[i];
-    if b < 0x80 {
+    // ASCII、または続きバイト(不正な位置)は 1 バイト進める。
+    if b < 0xC0 {
         1
-    } else if b < 0xC0 {
-        1 // 続きバイト(不正): 1バイト進める
     } else if b < 0xE0 {
         2
     } else if b < 0xF0 {
@@ -215,9 +224,7 @@ fn match_email(input: &str, i: usize) -> Option<(usize, usize)> {
     let mut start = i;
     while start > 0 {
         let c = b[start - 1];
-        if c.is_ascii_alphanumeric()
-            || matches!(c, b'.' | b'_' | b'+' | b'-' | b'%')
-        {
+        if c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'+' | b'-' | b'%') {
             start -= 1;
         } else {
             break;
@@ -265,21 +272,14 @@ fn match_prefixed(input: &str, i: usize, prefix: u8) -> Option<usize> {
             break;
         }
     }
-    if end > i + 1 {
-        Some(end)
-    } else {
-        None
-    }
+    if end > i + 1 { Some(end) } else { None }
 }
 
 /// 入力を「非保護セグメント」と「保護セグメント」に分割する。
 ///
 /// 返すベクタは入力順で、`Ok(&str)` が非保護(正規化対象)、
 /// `Err((&str, Kind))` が保護領域(そのまま保つ)を表す。
-pub fn segment<'a>(
-    input: &'a str,
-    spans: &[Span],
-) -> Vec<Result<&'a str, (&'a str, Kind)>> {
+pub fn segment<'a>(input: &'a str, spans: &[Span]) -> Vec<Result<&'a str, (&'a str, Kind)>> {
     let mut out = Vec::with_capacity(spans.len() * 2 + 1);
     let mut cursor = 0usize;
     for s in spans {

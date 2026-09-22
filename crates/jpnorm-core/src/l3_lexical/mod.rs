@@ -3,8 +3,8 @@
 //! 表記ゆれ・略語・旧字新字・送り仮名ゆれを、キー/正規形 のペア辞書で
 //! 解決する基盤を提供する。
 //!
-//! M3 では最小限の実装として、`SynonymDict` による longest-match 置換を提供する。
-//! 高速化(Aho-Corasick, FST)や Sudachi 同義語辞書のバンドルは次のマイルストーン。
+//! `SynonymDict` は Aho-Corasick (daachorse) による leftmost-longest 置換を提供する。
+//! Sudachi 同義語辞書のローダは `jpnorm-dict` クレートにある(辞書本体はバンドルしない)。
 
 pub mod synonym;
 

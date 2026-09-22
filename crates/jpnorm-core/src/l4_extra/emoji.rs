@@ -3,21 +3,31 @@
 //! Unicode の主要な絵文字ブロックと ZWJ シーケンス、バリエーションセレクタ、
 //! フラグ(Regional Indicator)を簡易的に扱う。
 
+use std::borrow::Cow;
+
 /// 絵文字の処理方法。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum EmojiAction {
     /// そのまま残す。
+    #[default]
     Keep,
     /// 完全に削除する。
     Remove,
     /// 指定文字列で置換する(プレースホルダ)。
-    Replace(&'static str),
+    Replace(Cow<'static, str>),
+}
+
+impl EmojiAction {
+    /// プレースホルダ置換を生成する。
+    pub fn replace(placeholder: impl Into<Cow<'static, str>>) -> Self {
+        Self::Replace(placeholder.into())
+    }
 }
 
 /// `action` に従ってテキスト中の絵文字を処理する。
 ///
 /// 連続する絵文字(ZWJ シーケンス等を含む)は1つの塊として扱う。
-pub fn process(input: &str, action: EmojiAction) -> String {
+pub fn process(input: &str, action: &EmojiAction) -> String {
     if matches!(action, EmojiAction::Keep) {
         return input.to_owned();
     }
@@ -43,7 +53,7 @@ pub fn process(input: &str, action: EmojiAction) -> String {
 fn is_emoji_component(c: char) -> bool {
     let cp = c as u32;
     matches!(cp,
-        // Miscellaneous Symbols and Pictographs
+        // Miscellaneous Symbols and Pictographs (skin tone modifiers U+1F3FB..U+1F3FF を含む)
         0x1F300..=0x1F5FF |
         // Emoticons
         0x1F600..=0x1F64F |
@@ -62,9 +72,7 @@ fn is_emoji_component(c: char) -> bool {
         // Variation Selectors (FE0F 等)
         0xFE00..=0xFE0F |
         // Zero Width Joiner
-        0x200D |
-        // Skin tone modifiers
-        0x1F3FB..=0x1F3FF
+        0x200D
     )
 }
 
@@ -74,13 +82,16 @@ mod tests {
 
     #[test]
     fn remove_basic() {
-        assert_eq!(process("hello 😀 world", EmojiAction::Remove), "hello  world");
+        assert_eq!(
+            process("hello 😀 world", &EmojiAction::Remove),
+            "hello  world"
+        );
     }
 
     #[test]
     fn replace_basic() {
         assert_eq!(
-            process("hi 🎉!!", EmojiAction::Replace("[emoji]")),
+            process("hi 🎉!!", &EmojiAction::replace("[emoji]")),
             "hi [emoji]!!"
         );
     }
@@ -89,14 +100,11 @@ mod tests {
     fn zwj_sequence_as_one() {
         // 👨‍👩‍👧 は ZWJ で繋がる一家族の絵文字
         let s = "family 👨\u{200D}👩\u{200D}👧 end";
-        assert_eq!(
-            process(s, EmojiAction::Replace("X")),
-            "family X end"
-        );
+        assert_eq!(process(s, &EmojiAction::replace("X")), "family X end");
     }
 
     #[test]
     fn keep_passthrough() {
-        assert_eq!(process("a😀b", EmojiAction::Keep), "a😀b");
+        assert_eq!(process("a😀b", &EmojiAction::Keep), "a😀b");
     }
 }

@@ -3,6 +3,27 @@
 //! Unicode では平仮名(U+3041..U+3096)と片仮名(U+30A1..U+30F6)が
 //! `0x60` オフセットで一対一対応する(一部例外あり)。
 
+/// ひらがな/カタカナ間の変換方法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum KanaAction {
+    /// 変換しない。
+    #[default]
+    Keep,
+    /// ひらがなをカタカナに揃える。
+    HiraToKata,
+    /// カタカナをひらがなに揃える。
+    KataToHira,
+}
+
+/// `action` に従ってかなを変換する。
+pub fn process(input: &str, action: KanaAction) -> String {
+    match action {
+        KanaAction::Keep => input.to_owned(),
+        KanaAction::HiraToKata => hira_to_kata(input),
+        KanaAction::KataToHira => kata_to_hira(input),
+    }
+}
+
 /// ひらがなをカタカナに変換する。
 pub fn hira_to_kata(input: &str) -> String {
     input

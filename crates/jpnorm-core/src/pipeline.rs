@@ -1,11 +1,14 @@
 //! 正規化パイプライン。Builder で構築する。
 
+use std::borrow::Cow;
+
 use crate::config::{Config, Preset};
 use crate::l1_char;
+use crate::l2_script::kana::{self, KanaAction};
 use crate::l2_script::{numbers, numerals};
 use crate::l3_lexical::SynonymDict;
 use crate::l4_extra::emoji::{self, EmojiAction};
-use crate::l4_extra::protect::{self, Kind as ProtectKind};
+use crate::l4_extra::protect::{self, Kind as ProtectKind, ProtectConfig};
 
 /// 正規化結果のセグメント情報。
 ///
@@ -16,7 +19,12 @@ pub enum Segment {
     /// 正規化が適用された通常のセグメント。
     Normalized(String),
     /// 保護領域(URL/email/mention/hashtag)で元文字列のまま。
-    Protected { text: String, kind: ProtectKind },
+    Protected {
+        /// 出力に含まれるテキスト(`url_wrap` 適用後)。
+        text: String,
+        /// 保護領域の種別。
+        kind: ProtectKind,
+    },
 }
 
 /// `normalize_with_segments()` の戻り値。
@@ -68,6 +76,23 @@ impl Normalizer {
         &self.config
     }
 
+    /// 設定済みの同義語辞書への参照。
+    pub fn synonyms(&self) -> Option<&SynonymDict> {
+        self.synonyms.as_ref()
+    }
+
+    /// 複数テキストをまとめて正規化する。
+    pub fn normalize_batch<I, S>(&self, inputs: I) -> Vec<String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        inputs
+            .into_iter()
+            .map(|s| self.normalize(s.as_ref()))
+            .collect()
+    }
+
     /// 文字列を正規化する。
     pub fn normalize(&self, input: &str) -> String {
         self.normalize_with_segments(input).text
@@ -102,7 +127,7 @@ impl Normalizer {
                 }
                 Err((protected, kind)) => {
                     let emitted = if matches!(kind, ProtectKind::Url) {
-                        if let Some((prefix, suffix)) = c.url_wrap {
+                        if let Some((prefix, suffix)) = &c.url_wrap {
                             format!("{prefix}{protected}{suffix}")
                         } else {
                             protected.to_owned()
@@ -191,22 +216,20 @@ impl Normalizer {
         if c.halfwidth_kana_to_fullwidth {
             s = l1_char::width::halfwidth_kana_to_fullwidth(&s);
         }
+        if !matches!(c.kana, KanaAction::Keep) {
+            s = kana::process(&s, c.kana);
+        }
         if c.unify_quotes {
             s = l1_char::quotes::unify(&s);
         }
         if c.unify_hyphens || c.unify_tildes || c.unify_prolonged {
-            s = l1_char::symbols::unify(
-                &s,
-                c.unify_hyphens,
-                c.unify_tildes,
-                c.unify_prolonged,
-            );
+            s = l1_char::symbols::unify(&s, c.unify_hyphens, c.unify_tildes, c.unify_prolonged);
         }
         if c.collapse_prolonged_run {
             s = l1_char::prolonged::collapse(&s);
         }
         if !matches!(c.emoji_action, EmojiAction::Keep) {
-            s = emoji::process(&s, c.emoji_action);
+            s = emoji::process(&s, &c.emoji_action);
         }
         // L2: 数値変換。NFKC 済みの半角数字を前提にするため後段で掛ける。
         // remove_symbols より前に動かすことで、漢数字ゼロ 〇 や桁区切りカンマが
@@ -250,22 +273,69 @@ impl Default for Normalizer {
 }
 
 /// Normalizer の Builder。
-#[derive(Debug, Clone, Default)]
+///
+/// `new()` は何も変換しない状態から始まる。プリセットをベースにしたい場合は
+/// [`preset`](Self::preset) を最初に呼び、そこから個別に足し引きする。
+/// 「引く」操作(プリセットの一部を無効化する)は [`configure`](Self::configure) で行う。
+///
+/// ```
+/// use jpnorm_core::{Normalizer, Preset};
+///
+/// let n = Normalizer::builder()
+///     .preset(Preset::ForSearch)
+///     .configure(|c| c.emoji_action = jpnorm_core::EmojiAction::Keep)
+///     .build();
+/// assert_eq!(n.normalize("ｶﾅ😀"), "カナ😀");
+/// ```
+#[derive(Debug, Clone)]
 pub struct NormalizerBuilder {
     config: Config,
+    synonyms: Option<SynonymDict>,
+}
+
+impl Default for NormalizerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NormalizerBuilder {
-    /// 空の Builder。
+    /// 空の Builder(何も変換しない状態)。
     pub fn new() -> Self {
         Self {
             config: Config::none(),
+            synonyms: None,
         }
     }
 
-    /// プリセットをベースに適用する。
+    /// 既存の設定から Builder を開始する。
+    pub fn from_config(config: Config) -> Self {
+        Self {
+            config,
+            synonyms: None,
+        }
+    }
+
+    /// プリセットをベースに適用する(それまでの設定は上書きされる)。
     pub fn preset(mut self, preset: Preset) -> Self {
         self.config = Config::from_preset(preset);
+        self
+    }
+
+    /// 設定をクロージャで直接編集する。プリセットの一部を無効化する場合などに使う。
+    pub fn configure(mut self, f: impl FnOnce(&mut Config)) -> Self {
+        f(&mut self.config);
+        self
+    }
+
+    /// 現在の設定への可変参照。
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.config
+    }
+
+    /// 同義語辞書を設定する。
+    pub fn synonyms(mut self, dict: SynonymDict) -> Self {
+        self.synonyms = Some(dict);
         self
     }
 
@@ -328,6 +398,30 @@ impl NormalizerBuilder {
         self
     }
 
+    /// ひらがなをカタカナに統一する。
+    pub fn hira_to_kata(mut self) -> Self {
+        self.config.kana = KanaAction::HiraToKata;
+        self
+    }
+
+    /// カタカナをひらがなに統一する。
+    pub fn kata_to_hira(mut self) -> Self {
+        self.config.kana = KanaAction::KataToHira;
+        self
+    }
+
+    /// 数値トークンを正規化する (1,200 / 1200.00 → 1200)。
+    pub fn canonicalize_numbers(mut self) -> Self {
+        self.config.canonicalize_numbers = true;
+        self
+    }
+
+    /// 連続した長音符・チルダを 1 つに畳み込む。
+    pub fn collapse_prolonged_run(mut self) -> Self {
+        self.config.collapse_prolonged_run = true;
+        self
+    }
+
     /// ハイフン統一。
     pub fn unify_hyphens(mut self) -> Self {
         self.config.unify_hyphens = true;
@@ -378,29 +472,55 @@ impl NormalizerBuilder {
 
     /// URL/email/mention/hashtag を保護する。
     pub fn protect_all(mut self) -> Self {
-        self.config.protect = crate::l4_extra::protect::ProtectConfig::all();
+        self.config.protect = ProtectConfig::all();
         self
     }
 
-    /// URL のみ保護する。
+    /// 保護対象をまとめて指定する。
+    pub fn protect(mut self, protect: ProtectConfig) -> Self {
+        self.config.protect = protect;
+        self
+    }
+
+    /// URL を保護する。
     pub fn protect_urls(mut self) -> Self {
         self.config.protect.urls = true;
+        self
+    }
+
+    /// メールアドレスを保護する。
+    pub fn protect_emails(mut self) -> Self {
+        self.config.protect.emails = true;
+        self
+    }
+
+    /// `@mention` を保護する。
+    pub fn protect_mentions(mut self) -> Self {
+        self.config.protect.mentions = true;
+        self
+    }
+
+    /// `#hashtag` を保護する。
+    pub fn protect_hashtags(mut self) -> Self {
+        self.config.protect.hashtags = true;
         self
     }
 
     /// URL を `<...>` で囲む。保護も同時に有効化する。
     ///
     /// RFC 3986 Appendix C 準拠の区切りで、Markdown/Slack では自動リンク化される。
-    pub fn wrap_urls_angle(mut self) -> Self {
-        self.config.protect.urls = true;
-        self.config.url_wrap = Some(("<", ">"));
-        self
+    pub fn wrap_urls_angle(self) -> Self {
+        self.wrap_urls("<", ">")
     }
 
     /// URL を任意の prefix/suffix で囲む。保護も同時に有効化する。
-    pub fn wrap_urls(mut self, prefix: &'static str, suffix: &'static str) -> Self {
+    pub fn wrap_urls(
+        mut self,
+        prefix: impl Into<Cow<'static, str>>,
+        suffix: impl Into<Cow<'static, str>>,
+    ) -> Self {
         self.config.protect.urls = true;
-        self.config.url_wrap = Some((prefix, suffix));
+        self.config.url_wrap = Some((prefix.into(), suffix.into()));
         self
     }
 
@@ -423,14 +543,23 @@ impl NormalizerBuilder {
     }
 
     /// 絵文字を指定プレースホルダに置換する。
-    pub fn replace_emoji(mut self, placeholder: &'static str) -> Self {
-        self.config.emoji_action = EmojiAction::Replace(placeholder);
+    pub fn replace_emoji(mut self, placeholder: impl Into<Cow<'static, str>>) -> Self {
+        self.config.emoji_action = EmojiAction::replace(placeholder);
+        self
+    }
+
+    /// 絵文字をそのまま残す(プリセットの除去設定を打ち消す)。
+    pub fn keep_emoji(mut self) -> Self {
+        self.config.emoji_action = EmojiAction::Keep;
         self
     }
 
     /// Normalizer を構築する。
     pub fn build(self) -> Normalizer {
-        Normalizer::from_config(self.config)
+        Normalizer {
+            config: self.config,
+            synonyms: self.synonyms,
+        }
     }
 }
 
@@ -517,17 +646,78 @@ mod tests {
     }
 
     #[test]
+    fn builder_default_equals_new() {
+        assert_eq!(
+            NormalizerBuilder::default().build().config(),
+            NormalizerBuilder::new().build().config()
+        );
+    }
+
+    #[test]
+    fn configure_can_disable_preset_flags() {
+        let n = Normalizer::builder()
+            .preset(Preset::ForSearch)
+            .configure(|c| c.emoji_action = EmojiAction::Keep)
+            .build();
+        assert_eq!(n.normalize("ｶﾅ😀"), "カナ😀");
+    }
+
+    #[test]
+    fn kana_unification() {
+        let n = Normalizer::builder()
+            .halfwidth_kana_to_fullwidth()
+            .kata_to_hira()
+            .build();
+        assert_eq!(n.normalize("ﾃｽﾄとテスト"), "てすととてすと");
+        let n = Normalizer::builder().hira_to_kata().build();
+        assert_eq!(n.normalize("ひらがな"), "ヒラガナ");
+    }
+
+    #[test]
+    fn builder_synonyms_applied() {
+        let mut d = SynonymDict::new();
+        d.insert("PC", "パソコン");
+        let n = Normalizer::builder().synonyms(d).build();
+        assert_eq!(n.normalize("PCを買う"), "パソコンを買う");
+    }
+
+    #[test]
+    fn url_wrap_owned_strings() {
+        let prefix = String::from("[");
+        let n = Normalizer::builder().wrap_urls(prefix, "]").build();
+        assert_eq!(n.normalize("https://example.com"), "[https://example.com]");
+    }
+
+    #[test]
+    fn preset_roundtrip_via_str() {
+        for p in Preset::ALL {
+            assert_eq!(p.as_str().parse::<Preset>().unwrap(), p);
+        }
+        assert!("bogus".parse::<Preset>().is_err());
+    }
+
+    #[test]
     fn segments_expose_protected_ranges() {
         let n = Normalizer::builder().protect_all().build();
         let r = n.normalize_with_segments("@alice と https://example.com だよ");
-        let has_mention = r
-            .segments
-            .iter()
-            .any(|s| matches!(s, Segment::Protected { kind: ProtectKind::Mention, .. }));
-        let has_url = r
-            .segments
-            .iter()
-            .any(|s| matches!(s, Segment::Protected { kind: ProtectKind::Url, .. }));
+        let has_mention = r.segments.iter().any(|s| {
+            matches!(
+                s,
+                Segment::Protected {
+                    kind: ProtectKind::Mention,
+                    ..
+                }
+            )
+        });
+        let has_url = r.segments.iter().any(|s| {
+            matches!(
+                s,
+                Segment::Protected {
+                    kind: ProtectKind::Url,
+                    ..
+                }
+            )
+        });
         assert!(has_mention && has_url);
     }
 }

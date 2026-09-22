@@ -4,18 +4,26 @@
 //! [`daachorse::CharwiseDoubleArrayAhoCorasick`] をコンパイルすることで
 //! longest-match leftmost 置換を高速に実行する。
 
-use daachorse::charwise::{CharwiseDoubleArrayAhoCorasick, CharwiseDoubleArrayAhoCorasickBuilder};
 use daachorse::MatchKind;
+use daachorse::charwise::{CharwiseDoubleArrayAhoCorasick, CharwiseDoubleArrayAhoCorasickBuilder};
 use std::collections::HashMap;
 use std::fmt;
 
 /// 同義語辞書ロード時のエラー。
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SynonymDictError {
     /// CSV/TSV の列数が期待と異なる。
     InvalidRow {
         /// 1始まりの行番号。
         line: usize,
+    },
+    /// JSON の構文または構造が不正。
+    InvalidJson {
+        /// 先頭からの文字オフセット(0始まり)。
+        offset: usize,
+        /// 何が期待されていたか。
+        message: &'static str,
     },
     /// I/O エラー。
     Io(std::io::Error),
@@ -25,6 +33,9 @@ impl fmt::Display for SynonymDictError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidRow { line } => write!(f, "invalid row at line {line}"),
+            Self::InvalidJson { offset, message } => {
+                write!(f, "invalid json at char {offset}: {message}")
+            }
             Self::Io(e) => write!(f, "io error: {e}"),
         }
     }
@@ -129,8 +140,7 @@ impl SynonymDict {
                 // 決定的な順序にするため、キーをソートする。
                 let mut keys: Vec<&String> = self.map.keys().collect();
                 keys.sort();
-                let values: Vec<String> =
-                    keys.iter().map(|k| self.map[*k].clone()).collect();
+                let values: Vec<String> = keys.iter().map(|k| self.map[*k].clone()).collect();
                 let built: Automaton = CharwiseDoubleArrayAhoCorasickBuilder::new()
                     .match_kind(MatchKind::LeftmostLongest)
                     .build(keys.iter().map(|k| k.as_str()))
@@ -168,38 +178,13 @@ impl SynonymDict {
 
     /// JSON オブジェクト `{"variant": "canonical", ...}` 形式の文字列から読み込む。
     ///
-    /// 依存を避けるために超最小のパーサを使う。文字列キー/値はバックスラッシュ
-    /// エスケープ `\"` `\\` `\n` `\t` のみサポート。
+    /// 依存を避けるため最小限の JSON パーサを内蔵している。文字列・配列・オブジェクト・
+    /// 標準エスケープ(`\uXXXX` とサロゲートペアを含む)をサポートする。
     pub fn from_json(text: &str) -> Result<Self, SynonymDictError> {
         let mut dict = Self::new();
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = skip_ws(&chars, 0);
-        if chars.get(i) != Some(&'{') {
-            return Err(SynonymDictError::InvalidRow { line: 0 });
-        }
-        i += 1;
-        loop {
-            i = skip_ws(&chars, i);
-            if chars.get(i) == Some(&'}') {
-                break;
-            }
-            let (k, ni) = parse_string(&chars, i)?;
-            i = skip_ws(&chars, ni);
-            if chars.get(i) != Some(&':') {
-                return Err(SynonymDictError::InvalidRow { line: 0 });
-            }
-            i += 1;
-            i = skip_ws(&chars, i);
-            let (v, ni) = parse_string(&chars, i)?;
-            i = skip_ws(&chars, ni);
-            dict.insert(k, v);
-            match chars.get(i) {
-                Some(',') => i += 1,
-                Some('}') => {
-                    break;
-                }
-                _ => return Err(SynonymDictError::InvalidRow { line: 0 }),
-            }
+        for (variant, value) in json::parse_object(text)? {
+            let canonical = value.into_string("expected string value")?;
+            dict.insert(variant, canonical);
         }
         Ok(dict)
     }
@@ -220,55 +205,13 @@ impl SynonymDict {
     /// ```
     pub fn from_json_grouped(text: &str) -> Result<Self, SynonymDictError> {
         let mut dict = Self::new();
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = skip_ws(&chars, 0);
-        if chars.get(i) != Some(&'{') {
-            return Err(SynonymDictError::InvalidRow { line: 0 });
-        }
-        i += 1;
-        loop {
-            i = skip_ws(&chars, i);
-            if chars.get(i) == Some(&'}') {
-                break;
-            }
-            let (canonical, ni) = parse_string(&chars, i)?;
-            i = skip_ws(&chars, ni);
-            if chars.get(i) != Some(&':') {
-                return Err(SynonymDictError::InvalidRow { line: 0 });
-            }
-            i += 1;
-            i = skip_ws(&chars, i);
-            if chars.get(i) != Some(&'[') {
-                return Err(SynonymDictError::InvalidRow { line: 0 });
-            }
-            i += 1;
-            loop {
-                i = skip_ws(&chars, i);
-                if chars.get(i) == Some(&']') {
-                    i += 1;
-                    break;
-                }
-                let (variant, ni2) = parse_string(&chars, i)?;
-                i = skip_ws(&chars, ni2);
-                // variant → canonical として登録。canonical 自身は置換対象にしない
-                // (恒等変換のため不要)。
+        for (canonical, value) in json::parse_object(text)? {
+            for item in value.into_array("expected array of strings")? {
+                let variant = item.into_string("expected string in array")?;
+                // canonical 自身は置換対象にしない(恒等変換のため不要)。
                 if variant != canonical {
                     dict.insert(variant, canonical.clone());
                 }
-                match chars.get(i) {
-                    Some(',') => i += 1,
-                    Some(']') => {
-                        i += 1;
-                        break;
-                    }
-                    _ => return Err(SynonymDictError::InvalidRow { line: 0 }),
-                }
-            }
-            i = skip_ws(&chars, i);
-            match chars.get(i) {
-                Some(',') => i += 1,
-                Some('}') => break,
-                _ => return Err(SynonymDictError::InvalidRow { line: 0 }),
             }
         }
         Ok(dict)
@@ -300,47 +243,227 @@ impl SynonymDict {
     }
 }
 
-// ---- 最小 JSON 文字列パーサ ----
+// ---- 最小 JSON パーサ(依存追加を避けるため) ----
 
-fn skip_ws(chars: &[char], mut i: usize) -> usize {
-    while let Some(&c) = chars.get(i) {
-        if c.is_whitespace() {
-            i += 1;
-        } else {
-            break;
+mod json {
+    use super::SynonymDictError;
+
+    /// 辞書ロードに必要な範囲の JSON 値。数値/真偽値/null は `Other` にまとめる。
+    pub(super) enum Value {
+        Str(String),
+        Arr(Vec<Value>),
+        Obj(Vec<(String, Value)>),
+        Other,
+    }
+
+    impl Value {
+        pub(super) fn into_string(self, message: &'static str) -> Result<String, SynonymDictError> {
+            match self {
+                Value::Str(s) => Ok(s),
+                _ => Err(SynonymDictError::InvalidJson { offset: 0, message }),
+            }
+        }
+
+        pub(super) fn into_array(
+            self,
+            message: &'static str,
+        ) -> Result<Vec<Value>, SynonymDictError> {
+            match self {
+                Value::Arr(v) => Ok(v),
+                _ => Err(SynonymDictError::InvalidJson { offset: 0, message }),
+            }
         }
     }
-    i
-}
 
-fn parse_string(chars: &[char], mut i: usize) -> Result<(String, usize), SynonymDictError> {
-    if chars.get(i) != Some(&'"') {
-        return Err(SynonymDictError::InvalidRow { line: 0 });
+    /// トップレベルがオブジェクトであることを要求してパースする。
+    pub(super) fn parse_object(text: &str) -> Result<Vec<(String, Value)>, SynonymDictError> {
+        let chars: Vec<char> = text.chars().collect();
+        let mut p = Parser {
+            chars: &chars,
+            i: 0,
+        };
+        p.skip_ws();
+        let value = p.parse_value()?;
+        p.skip_ws();
+        if p.i != p.chars.len() {
+            return Err(p.err("trailing characters after top-level value"));
+        }
+        match value {
+            Value::Obj(entries) => Ok(entries),
+            _ => Err(SynonymDictError::InvalidJson {
+                offset: 0,
+                message: "expected top-level object",
+            }),
+        }
     }
-    i += 1;
-    let mut out = String::new();
-    while let Some(&c) = chars.get(i) {
-        match c {
-            '"' => return Ok((out, i + 1)),
-            '\\' => {
-                i += 1;
-                match chars.get(i) {
-                    Some('"') => out.push('"'),
-                    Some('\\') => out.push('\\'),
-                    Some('n') => out.push('\n'),
-                    Some('t') => out.push('\t'),
-                    Some('/') => out.push('/'),
-                    _ => return Err(SynonymDictError::InvalidRow { line: 0 }),
+
+    struct Parser<'a> {
+        chars: &'a [char],
+        i: usize,
+    }
+
+    impl Parser<'_> {
+        fn err(&self, message: &'static str) -> SynonymDictError {
+            SynonymDictError::InvalidJson {
+                offset: self.i,
+                message,
+            }
+        }
+
+        fn peek(&self) -> Option<char> {
+            self.chars.get(self.i).copied()
+        }
+
+        fn skip_ws(&mut self) {
+            while matches!(self.peek(), Some(' ' | '\t' | '\n' | '\r')) {
+                self.i += 1;
+            }
+        }
+
+        fn expect(&mut self, c: char, message: &'static str) -> Result<(), SynonymDictError> {
+            if self.peek() == Some(c) {
+                self.i += 1;
+                Ok(())
+            } else {
+                Err(self.err(message))
+            }
+        }
+
+        fn parse_value(&mut self) -> Result<Value, SynonymDictError> {
+            match self.peek() {
+                Some('"') => self.parse_string().map(Value::Str),
+                Some('[') => self.parse_array(),
+                Some('{') => self.parse_object(),
+                Some(_) => {
+                    self.skip_scalar();
+                    Ok(Value::Other)
                 }
-                i += 1;
-            }
-            _ => {
-                out.push(c);
-                i += 1;
+                None => Err(self.err("unexpected end of input")),
             }
         }
+
+        /// 数値/true/false/null を読み飛ばす。
+        fn skip_scalar(&mut self) {
+            while let Some(c) = self.peek() {
+                if matches!(c, ',' | ']' | '}' | ' ' | '\t' | '\n' | '\r') {
+                    break;
+                }
+                self.i += 1;
+            }
+        }
+
+        fn parse_array(&mut self) -> Result<Value, SynonymDictError> {
+            self.expect('[', "expected '['")?;
+            let mut items = Vec::new();
+            loop {
+                self.skip_ws();
+                if self.peek() == Some(']') {
+                    self.i += 1;
+                    return Ok(Value::Arr(items));
+                }
+                items.push(self.parse_value()?);
+                self.skip_ws();
+                match self.peek() {
+                    Some(',') => self.i += 1,
+                    Some(']') => {
+                        self.i += 1;
+                        return Ok(Value::Arr(items));
+                    }
+                    _ => return Err(self.err("expected ',' or ']'")),
+                }
+            }
+        }
+
+        fn parse_object(&mut self) -> Result<Value, SynonymDictError> {
+            self.expect('{', "expected '{'")?;
+            let mut entries = Vec::new();
+            loop {
+                self.skip_ws();
+                if self.peek() == Some('}') {
+                    self.i += 1;
+                    return Ok(Value::Obj(entries));
+                }
+                let key = self.parse_string()?;
+                self.skip_ws();
+                self.expect(':', "expected ':' after object key")?;
+                self.skip_ws();
+                let value = self.parse_value()?;
+                entries.push((key, value));
+                self.skip_ws();
+                match self.peek() {
+                    Some(',') => self.i += 1,
+                    Some('}') => {
+                        self.i += 1;
+                        return Ok(Value::Obj(entries));
+                    }
+                    _ => return Err(self.err("expected ',' or '}'")),
+                }
+            }
+        }
+
+        fn parse_string(&mut self) -> Result<String, SynonymDictError> {
+            self.expect('"', "expected string")?;
+            let mut out = String::new();
+            loop {
+                let Some(c) = self.peek() else {
+                    return Err(self.err("unterminated string"));
+                };
+                self.i += 1;
+                match c {
+                    '"' => return Ok(out),
+                    '\\' => {
+                        let Some(e) = self.peek() else {
+                            return Err(self.err("unterminated escape"));
+                        };
+                        self.i += 1;
+                        match e {
+                            '"' => out.push('"'),
+                            '\\' => out.push('\\'),
+                            '/' => out.push('/'),
+                            'b' => out.push('\u{0008}'),
+                            'f' => out.push('\u{000C}'),
+                            'n' => out.push('\n'),
+                            'r' => out.push('\r'),
+                            't' => out.push('\t'),
+                            'u' => out.push(self.parse_unicode_escape()?),
+                            _ => return Err(self.err("invalid escape sequence")),
+                        }
+                    }
+                    _ => out.push(c),
+                }
+            }
+        }
+
+        /// `\u` の直後から 4 桁を読む。サロゲートペアは結合して 1 文字にする。
+        fn parse_unicode_escape(&mut self) -> Result<char, SynonymDictError> {
+            let hi = self.parse_hex4()?;
+            if (0xD800..=0xDBFF).contains(&hi) {
+                // 上位サロゲート: 続く \uXXXX が下位サロゲートである必要がある。
+                if self.peek() == Some('\\') && self.chars.get(self.i + 1) == Some(&'u') {
+                    self.i += 2;
+                    let lo = self.parse_hex4()?;
+                    if (0xDC00..=0xDFFF).contains(&lo) {
+                        let cp = 0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00);
+                        return char::from_u32(cp).ok_or_else(|| self.err("invalid code point"));
+                    }
+                }
+                return Err(self.err("lone high surrogate in \\u escape"));
+            }
+            char::from_u32(hi).ok_or_else(|| self.err("invalid \\u escape (lone surrogate)"))
+        }
+
+        fn parse_hex4(&mut self) -> Result<u32, SynonymDictError> {
+            let mut v = 0u32;
+            for _ in 0..4 {
+                let Some(d) = self.peek().and_then(|c| c.to_digit(16)) else {
+                    return Err(self.err("expected 4 hex digits after \\u"));
+                };
+                v = (v << 4) | d;
+                self.i += 1;
+            }
+            Ok(v)
+        }
     }
-    Err(SynonymDictError::InvalidRow { line: 0 })
 }
 
 #[cfg(test)]
@@ -390,13 +513,52 @@ mod tests {
     }
 
     #[test]
+    fn json_unicode_escapes() {
+        // Python の json.dumps() 既定 (ensure_ascii=True) の出力を読めること。
+        let j = r#"{"\u5e7d\u904a\u767d\u66f8": ["\u5e7d\u767d", "\ud83d\ude00"]}"#;
+        let d = SynonymDict::from_json_grouped(j).unwrap();
+        assert_eq!(d.apply("幽白と😀"), "幽遊白書と幽遊白書");
+    }
+
+    #[test]
+    fn json_all_escapes_and_whitespace() {
+        let j = "{\r\n  \"a\\\"b\" : \"x\\/y\\n\" ,\n \"c\": \"\\b\\f\\r\\t\"\n}";
+        let d = SynonymDict::from_json(j).unwrap();
+        assert_eq!(d.apply("a\"b"), "x/y\n");
+        assert_eq!(d.apply("c"), "\u{8}\u{c}\r\t");
+    }
+
+    #[test]
+    fn json_errors_are_descriptive() {
+        let e = SynonymDict::from_json("[1, 2]").unwrap_err();
+        assert!(matches!(e, SynonymDictError::InvalidJson { .. }));
+        assert!(e.to_string().contains("top-level object"), "{e}");
+        let e = SynonymDict::from_json_grouped(r#"{"a": "b"}"#).unwrap_err();
+        assert!(e.to_string().contains("array"), "{e}");
+        let e = SynonymDict::from_json(r#"{"a": "b"} x"#).unwrap_err();
+        assert!(e.to_string().contains("trailing"), "{e}");
+        let e = SynonymDict::from_json(r#"{"a": "\ud800"}"#).unwrap_err();
+        assert!(e.to_string().contains("surrogate"), "{e}");
+    }
+
+    #[test]
+    fn json_tolerates_non_string_values_when_unused() {
+        // 未使用の値型(数値/真偽値/null)は構造としては受理し、型不一致は明示エラー。
+        let e = SynonymDict::from_json(r#"{"a": 1}"#).unwrap_err();
+        assert!(e.to_string().contains("string"), "{e}");
+    }
+
+    #[test]
     fn json_grouped_load() {
         let j = r#"{
             "幽遊白書": ["幽白", "ゆうはく", "幽☆遊☆白書"],
             "パソコン": ["PC", "パーコン"]
         }"#;
         let d = SynonymDict::from_json_grouped(j).unwrap();
-        assert_eq!(d.apply("幽白とゆうはくと幽☆遊☆白書"), "幽遊白書と幽遊白書と幽遊白書");
+        assert_eq!(
+            d.apply("幽白とゆうはくと幽☆遊☆白書"),
+            "幽遊白書と幽遊白書と幽遊白書"
+        );
         assert_eq!(d.apply("PCを買う"), "パソコンを買う");
         // canonical 自身は変化しない
         assert_eq!(d.apply("幽遊白書"), "幽遊白書");

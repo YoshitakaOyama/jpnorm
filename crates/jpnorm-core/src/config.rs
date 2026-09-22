@@ -1,12 +1,18 @@
 //! 正規化の設定とプリセット。
 
+use std::borrow::Cow;
+use std::fmt;
+use std::str::FromStr;
+
+use crate::l2_script::kana::KanaAction;
 use crate::l4_extra::emoji::EmojiAction;
 use crate::l4_extra::protect::ProtectConfig;
 
 /// 正規化プリセット。
 ///
-/// 実用パターンを名前付きで提供する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 実用パターンを名前付きで提供する。文字列名との相互変換は
+/// [`Preset::as_str`] / [`FromStr`] で行える(Python バインディング等で使用)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Preset {
     /// 何もしない(ビルダーで個別指定したい場合のベース)。
     None,
@@ -20,8 +26,79 @@ pub enum Preset {
     ForCompare,
 }
 
+impl Preset {
+    /// 全プリセット(定義順)。
+    pub const ALL: [Preset; 5] = [
+        Preset::None,
+        Preset::NeologdnCompat,
+        Preset::ForSearch,
+        Preset::ForDisplay,
+        Preset::ForCompare,
+    ];
+
+    /// snake_case のプリセット名。
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Preset::None => "none",
+            Preset::NeologdnCompat => "neologdn_compat",
+            Preset::ForSearch => "for_search",
+            Preset::ForDisplay => "for_display",
+            Preset::ForCompare => "for_compare",
+        }
+    }
+}
+
+impl fmt::Display for Preset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 不明なプリセット名。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsePresetError {
+    name: String,
+}
+
+impl ParsePresetError {
+    /// 与えられた(不明な)名前。
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl fmt::Display for ParsePresetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown preset: {:?} (valid: ", self.name)?;
+        for (i, p) in Preset::ALL.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            f.write_str(p.as_str())?;
+        }
+        f.write_str(")")
+    }
+}
+
+impl std::error::Error for ParsePresetError {}
+
+impl FromStr for Preset {
+    type Err = ParsePresetError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Preset::ALL
+            .iter()
+            .copied()
+            .find(|p| p.as_str() == s)
+            .ok_or_else(|| ParsePresetError { name: s.to_owned() })
+    }
+}
+
 /// 正規化設定。個別フラグで細かく制御する。
-#[derive(Debug, Clone)]
+///
+/// プリセット (`Config::for_search()` 等) をベースに、必要なフィールドだけ
+/// 書き換えて使うのが基本。フィールドはマイナーバージョンで追加されることがある。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// 改行コード(CRLF/CR/NEL/LS/PS)を LF に統一する。
     pub normalize_newlines: bool,
@@ -41,6 +118,8 @@ pub struct Config {
     pub nfkc: bool,
     /// 半角カナを全角カナへ。
     pub halfwidth_kana_to_fullwidth: bool,
+    /// ひらがな/カタカナの統一(半角カナ→全角化の後に適用)。
+    pub kana: KanaAction,
     /// 各種ハイフン/マイナス/ダッシュを `-` に統一する。
     pub unify_hyphens: bool,
     /// 各種チルダ/波ダッシュを `〜` に統一する。
@@ -68,7 +147,7 @@ pub struct Config {
     /// 絵文字の処理方法。
     pub emoji_action: EmojiAction,
     /// URL を prefix/suffix で囲む。`protect.urls` 有効時のみ機能する。
-    pub url_wrap: Option<(&'static str, &'static str)>,
+    pub url_wrap: Option<(Cow<'static, str>, Cow<'static, str>)>,
 }
 
 impl Config {
@@ -84,6 +163,7 @@ impl Config {
             canonicalize_numbers: false,
             nfkc: false,
             halfwidth_kana_to_fullwidth: false,
+            kana: KanaAction::Keep,
             unify_hyphens: false,
             unify_tildes: false,
             unify_prolonged: false,
@@ -95,12 +175,7 @@ impl Config {
             remove_symbols: false,
             remove_cjk_compat: false,
             unify_quotes: false,
-            protect: ProtectConfig {
-                urls: false,
-                emails: false,
-                mentions: false,
-                hashtags: false,
-            },
+            protect: ProtectConfig::none(),
             emoji_action: EmojiAction::Keep,
             url_wrap: None,
         }
@@ -119,6 +194,7 @@ impl Config {
             canonicalize_numbers: false,
             nfkc: true,
             halfwidth_kana_to_fullwidth: true,
+            kana: KanaAction::Keep,
             unify_hyphens: true,
             unify_tildes: true,
             unify_prolonged: true,
@@ -131,12 +207,7 @@ impl Config {
             remove_symbols: false,
             remove_cjk_compat: false,
             unify_quotes: false,
-            protect: ProtectConfig {
-                urls: false,
-                emails: false,
-                mentions: false,
-                hashtags: false,
-            },
+            protect: ProtectConfig::none(),
             emoji_action: EmojiAction::Keep,
             url_wrap: None,
         }
@@ -154,6 +225,7 @@ impl Config {
             canonicalize_numbers: false,
             nfkc: true,
             halfwidth_kana_to_fullwidth: true,
+            kana: KanaAction::Keep,
             unify_hyphens: true,
             unify_tildes: true,
             unify_prolonged: true,
@@ -183,6 +255,7 @@ impl Config {
             canonicalize_numbers: false,
             nfkc: false,
             halfwidth_kana_to_fullwidth: true,
+            kana: KanaAction::Keep,
             unify_hyphens: false,
             unify_tildes: false,
             unify_prolonged: true,
@@ -194,12 +267,7 @@ impl Config {
             remove_symbols: false,
             remove_cjk_compat: false,
             unify_quotes: false,
-            protect: ProtectConfig {
-                urls: false,
-                emails: false,
-                mentions: false,
-                hashtags: false,
-            },
+            protect: ProtectConfig::none(),
             emoji_action: EmojiAction::Keep,
             url_wrap: None,
         }
@@ -218,6 +286,7 @@ impl Config {
             canonicalize_numbers: true,
             nfkc: true,
             halfwidth_kana_to_fullwidth: true,
+            kana: KanaAction::Keep,
             unify_hyphens: true,
             unify_tildes: true,
             unify_prolonged: true,
@@ -229,12 +298,7 @@ impl Config {
             remove_symbols: true,
             remove_cjk_compat: true,
             unify_quotes: true,
-            protect: ProtectConfig {
-                urls: false,
-                emails: false,
-                mentions: false,
-                hashtags: false,
-            },
+            protect: ProtectConfig::none(),
             emoji_action: EmojiAction::Remove,
             url_wrap: None,
         }
