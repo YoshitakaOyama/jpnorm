@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jpnorm playground</title>
+<meta name="description" content="日本語テキスト正規化ライブラリ jpnorm をブラウザで試す。テキストを貼ると 5 つのプリセットの結果が並びます。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%232f6fed%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2718%27 font-family=%27sans-serif%27 font-weight=%27700%27 fill=%27white%27 text-anchor=%27middle%27%3E正%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c1f24; --muted: #5d6673; --line: #e1e5ea;
+    --accent: #2f6fed; --accent-ink: #ffffff; --diff: #fff3c4; --code: #f0f2f5; --err: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1216; --panel: #171b21; --ink: #e6e9ee; --muted: #9aa4b2; --line: #2a313b;
+      --accent: #6b9cff; --accent-ink: #0f1216; --diff: #4a3d00; --code: #0f1216; --err: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  header { padding: 24px 16px 8px; max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 small { font-weight: normal; color: var(--muted); font-size: 13px; margin-left: 8px; }
+  header p { margin: 0; color: var(--muted); }
+  header a { color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; display: grid; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  textarea { width: 100%; min-height: 110px; resize: vertical; font: 15px/1.6 inherit; color: var(--ink); background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .samples button, .tabs button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .samples button:hover, .tabs button:hover { border-color: var(--accent); }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .results { display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: start; border-top: 1px solid var(--line); padding-top: 10px; }
+  .row:first-child { border-top: 0; padding-top: 0; }
+  .row .name { font-weight: 600; }
+  .row .name small { display: block; font-weight: normal; color: var(--muted); font-size: 12px; }
+  .out { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 14px; white-space: pre-wrap; word-break: break-all; background: var(--code); border-radius: 8px; padding: 8px 10px; min-height: 38px; }
+  .out mark { background: var(--diff); color: inherit; border-radius: 3px; }
+  .out .same { color: var(--muted); font-style: italic; }
+  .flags { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 16px; margin-top: 10px; }
+  .flags label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .flags select, .flags input[type=text], .flags input[type=number] { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--code); color: var(--ink); width: 110px; }
+  .dict textarea { min-height: 80px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+  .error { color: var(--err); font-size: 13px; margin-top: 6px; }
+  .hidden { display: none; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>jpnorm playground <small id="version"></small></h1>
+  <p>日本語テキストの表記ゆれを用途別に吸収するライブラリ。テキストを貼ると全プリセットの結果が並びます。
+    <a href="https://github.com/YoshitakaOyama/jpnorm">GitHub</a> ·
+    <a href="https://pypi.org/project/jpnorm/">PyPI</a> · <code>pip install jpnorm</code></p>
+</header>
+<main>
+  <section class="panel">
+    <textarea id="input" spellcheck="false">ﾊﾝｶｸｶﾅ　と  全角  ！！ーーー 〜〜〜 wwwww https://example.com/Docs?Q=1 @alice #rust_lang 😀
+価格：￥１，２００（税込）　第一章　㈱サンプル</textarea>
+    <div class="samples" id="samples"></div>
+  </section>
+
+  <section class="panel">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div id="compare" class="results" style="margin-top:12px"></div>
+    <div id="custom" class="hidden" style="margin-top:12px">
+      <div class="flags" id="flags"></div>
+      <div class="dict" style="margin-top:12px">
+        <label for="dict"><strong>カスタム辞書</strong> <span class="hint" style="display:inline">{"正規形": ["表記ゆれ", ...]}</span></label>
+        <textarea id="dict" spellcheck="false">{"株式会社サンプル": ["㈱サンプル", "(株)サンプル", "サンプル社"]}</textarea>
+      </div>
+      <div class="results" style="margin-top:12px"><div class="row"><div class="name">結果</div><div class="out" id="customOut"></div></div></div>
+      <div class="error" id="customErr"></div>
+      <p class="hint">同じ設定を Python で: <code id="pySnippet"></code></p>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+import init, { presets, presetConfig, normalize, version } from "./pkg/jpnorm_wasm.js";
+
+const SAMPLES = [
+  ["ツイート風", "ｶﾀｶﾅ と  全角 ！！ーーー 〜〜〜 wwwwww https://example.com/path?x=1 @alice #rust_lang 😀"],
+  ["価格・数値", "価格：￥１，２００（税込）　合計は三百二十円、２０２４年３月２９日"],
+  ["名寄せ", "㈱サンプル / (株)サンプル / サンプル社 / 幽☆遊☆白書 と 幽白"],
+  ["不可視文字", "ゼロ幅\u200b文字と\u202e制御\u0007文字\r\n改行"],
+  ["neologdn", "ｵｰﾙｲﾝﾜﾝ ＡＢＣ 〜〜〜 ！！！ すごーーーーい"],
+];
+const DESC = {
+  none: "何もしない",
+  neologdn_compat: "neologdn 置き換え (既定)",
+  for_display: "UI 表示向け。見た目を壊さない",
+  for_search: "検索索引・RAG。URL 保護、絵文字除去",
+  for_compare: "精度評価・名寄せ。漢数字→数字、記号除去",
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+// 入力と出力の差分を文字単位で軽くハイライトする (LCS ベース、短文向け)
+function highlight(a, b) {
+  if (a === b) return `<span class="same">変化なし</span>`;
+  const A = [...a], B = [...b];
+  if (A.length * B.length > 250000) return esc(b);
+  const dp = Array.from({ length: A.length + 1 }, () => new Uint16Array(B.length + 1));
+  for (let i = A.length - 1; i >= 0; i--)
+    for (let j = B.length - 1; j >= 0; j--)
+      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  let i = 0, j = 0, out = "", run = "";
+  const flush = () => { if (run) { out += `<mark>${esc(run)}</mark>`; run = ""; } };
+  while (i < A.length && j < B.length) {
+    if (A[i] === B[j]) { flush(); out += esc(B[j]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else { run += B[j]; j++; }
+  }
+  while (j < B.length) run += B[j++];
+  flush();
+  return out;
+}
+
+let mode = "compare";
+let customPreset = "for_search";
+const customFlags = {};
+
+function renderCompare() {
+  const text = $("input").value;
+  $("compare").innerHTML = presets().map((p) => {
+    let html;
+    try { html = highlight(text, normalize(text, { preset: p }, null)); }
+    catch (e) { html = `<span class="error">${esc(String(e))}</span>`; }
+    return `<div class="row"><div class="name">${p}<small>${DESC[p] ?? ""}</small></div><div class="out">${html}</div></div>`;
+  }).join("");
+}
+
+function buildFlags() {
+  const cfg = presetConfig(customPreset);
+  const el = $("flags");
+  el.innerHTML = "";
+  const presetSel = document.createElement("label");
+  presetSel.innerHTML = `<span>preset</span><select id="presetSel">${presets().map((p) => `<option ${p === customPreset ? "selected" : ""}>${p}</option>`).join("")}</select>`;
+  el.appendChild(presetSel);
+  presetSel.querySelector("select").onchange = (e) => { customPreset = e.target.value; for (const k in customFlags) delete customFlags[k]; buildFlags(); renderCustom(); };
+  for (const [k, v] of Object.entries(cfg)) {
+    const cur = k in customFlags ? customFlags[k] : v;
+    const lab = document.createElement("label");
+    let input;
+    if (typeof v === "boolean") {
+      input = Object.assign(document.createElement("input"), { type: "checkbox", checked: cur });
+      lab.append(input, document.createTextNode(k));
+      input.onchange = () => { customFlags[k] = input.checked; renderCustom(); };
+    } else if (k === "kana" || k === "emoji") {
+      const opts = k === "kana" ? ["keep", "hira_to_kata", "kata_to_hira"] : ["keep", "remove"];
+      input = document.createElement("select");
+      input.innerHTML = opts.map((o) => `<option ${o === cur ? "selected" : ""}>${o}</option>`).join("");
+      lab.append(document.createTextNode(k), input);
+      input.onchange = () => { customFlags[k] = input.value; renderCustom(); };
+    } else if (k === "repeat_limit") {
+      input = Object.assign(document.createElement("input"), { type: "number", min: 1, placeholder: "none", value: cur ?? "" });
+      lab.append(document.createTextNode(k), input);
+      input.oninput = () => { customFlags[k] = input.value === "" ? null : Number(input.value); renderCustom(); };
+    } else if (k === "url_wrap") {
+      input = Object.assign(document.createElement("input"), { type: "text", placeholder: "prefix,suffix", value: cur ? cur.join(",") : "" });
+      lab.append(document.createTextNode(k), input);
+      input.oninput = () => { const p = input.value.split(","); customFlags[k] = p.length === 2 ? p : null; renderCustom(); };
+    } else {
+      input = Object.assign(document.createElement("input"), { type: "text", placeholder: "none", value: cur ?? "" });
+      lab.append(document.createTextNode(k), input);
+      input.oninput = () => { customFlags[k] = input.value === "" ? null : input.value; renderCustom(); };
+    }
+    el.appendChild(lab);
+  }
+}
+
+function renderCustom() {
+  const text = $("input").value;
+  const opts = { preset: customPreset, ...customFlags };
+  $("customErr").textContent = "";
+  try {
+    $("customOut").innerHTML = highlight(text, normalize(text, opts, $("dict").value));
+  } catch (e) {
+    $("customOut").textContent = "";
+    $("customErr").textContent = String(e);
+  }
+  const kw = Object.entries(customFlags).map(([k, v]) => `${k}=${JSON.stringify(v).replace(/^\[(.*)\]$/, "($1)").replace(/null/, "None").replace(/true/, "True").replace(/false/, "False")}`);
+  $("pySnippet").textContent = `Normalizer(${[JSON.stringify(customPreset), ...kw].join(", ")})`;
+}
+
+function render() { mode === "compare" ? renderCompare() : renderCustom(); }
+
+function setMode(m) {
+  mode = m;
+  for (const b of $("tabs").children) b.setAttribute("aria-selected", b.dataset.mode === m);
+  $("compare").classList.toggle("hidden", m !== "compare");
+  $("custom").classList.toggle("hidden", m !== "custom");
+  render();
+}
+
+await init();
+$("version").textContent = "v" + version();
+$("tabs").innerHTML = `<button role="tab" data-mode="compare">プリセット比較</button><button role="tab" data-mode="custom">カスタマイズ</button>`;
+for (const b of $("tabs").children) b.onclick = () => setMode(b.dataset.mode);
+$("samples").innerHTML = SAMPLES.map(([n], i) => `<button data-i="${i}">${n}</button>`).join("");
+for (const b of $("samples").children) b.onclick = () => { $("input").value = SAMPLES[b.dataset.i][1]; render(); };
+$("input").addEventListener("input", render);
+$("dict").addEventListener("input", renderCustom);
+buildFlags();
+setMode("compare");
+</script>
+</body>
+</html>

@@ -16,6 +16,9 @@ build/
 .mypy_cache/
 .ruff_cache/
 
+# Playground wasm build output (built in CI)
+/playground/pkg/
+
 # Data (Sudachi synonyms etc. are downloaded, not bundled)
 /data/
 
@@ -26,3 +29,6 @@ build/
 .vscode/
 .idea/
 .DS_Store
+
+# Playwright MCP artifacts
+/.playwright-mcp/

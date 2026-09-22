@@ -1,0 +1,23 @@
+[package]
+name = "jpnorm-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly bindings for jpnorm (browser playground)"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jpnorm-core.workspace = true
+jpnorm-dict.workspace = true
+wasm-bindgen = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz"]
