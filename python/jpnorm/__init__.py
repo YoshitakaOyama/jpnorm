@@ -1,14 +1,11 @@
-"""jpnorm — 世界一の日本語正規化ライブラリ / World-class Japanese text normalization.
+"""jpnorm — 日本語テキスト正規化ライブラリ (Rust コア + Python バインディング)。
 
-Python側はRustネイティブ拡張(`jpnorm._native`)を再エクスポートする薄いラッパー。
+Python 側はネイティブ拡張 ``jpnorm._native`` を再エクスポートする薄いラッパーと、
+精度評価向けの比較ユーティリティ (:mod:`jpnorm.comparison`) からなる。
 """
 
-from jpnorm._native import Normalizer, __version__, normalize
-from jpnorm.comparison import (
-    ComparisonResult,
-    ComparisonStrategy,
-    compare,
-)
+from jpnorm._native import Normalizer, __version__, levenshtein, normalize
+from jpnorm.comparison import ComparisonResult, ComparisonStrategy, compare
 
 __all__ = [
     "ComparisonResult",
@@ -16,5 +13,6 @@ __all__ = [
     "Normalizer",
     "__version__",
     "compare",
+    "levenshtein",
     "normalize",
 ]

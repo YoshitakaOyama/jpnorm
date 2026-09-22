@@ -1,32 +1,91 @@
 [build-system]
-requires = ["maturin>=1.5,<2.0"]
+requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "jpnorm"
 version = "0.0.4"
-description = "みんなの日本語正規化ライブラリ / World-class Japanese text normalization"
+description = "日本語テキスト正規化ライブラリ / Fast, configurable Japanese text normalization"
 readme = "README.md"
-license = { text = "MIT OR Apache-2.0" }
+license = "MIT OR Apache-2.0"
 license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
-requires-python = ">=3.9"
-keywords = ["japanese", "nlp", "normalization", "text"]
+requires-python = ">=3.10"
+keywords = ["japanese", "nlp", "normalization", "text", "unicode", "neologdn"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "License :: OSI Approved :: Apache Software License",
     "Natural Language :: Japanese",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Rust",
     "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
 ]
+dependencies = []
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.0"]
+llm = ["jpnorm[anthropic,openai]"]
 
 [project.urls]
-Repository = "https://github.com/yoshitakaoyama/jpnorm"
+Repository = "https://github.com/YoshitakaOyama/jpnorm"
+Issues = "https://github.com/YoshitakaOyama/jpnorm/issues"
+Changelog = "https://github.com/YoshitakaOyama/jpnorm/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.8,<2.0",
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "typing-extensions>=4.6",
+]
 
 [tool.maturin]
 manifest-path = "crates/jpnorm-py/Cargo.toml"
 module-name = "jpnorm._native"
 python-source = "python"
 features = ["pyo3/extension-module"]
+
+[tool.uv]
+# Rust ソースが変わったら uv sync で拡張を再ビルドする。
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "crates/**/*.rs" },
+    { file = "crates/**/Cargo.toml" },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["python", "tests/python"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.ruff.format]
+# README のコード例はコメント位置を揃えているので Markdown は整形対象外にする。
+exclude = ["*.md"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["python/jpnorm"]
+
+[[tool.mypy.overrides]]
+module = ["anthropic", "openai"]
+ignore_missing_imports = true

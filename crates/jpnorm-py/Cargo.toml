@@ -13,4 +13,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 jpnorm-core.workspace = true
+jpnorm-dict.workspace = true
 pyo3.workspace = true

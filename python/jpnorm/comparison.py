@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
+
+from jpnorm._native import levenshtein as _levenshtein
 
 if TYPE_CHECKING:
     from jpnorm import Normalizer
@@ -119,9 +122,7 @@ def _coerce_strategy(
         return ComparisonStrategy(strategy)
     except ValueError as e:
         valid = ", ".join(s.value for s in ComparisonStrategy)
-        raise ValueError(
-            f"unknown strategy: {strategy!r} (valid: {valid})"
-        ) from e
+        raise ValueError(f"unknown strategy: {strategy!r} (valid: {valid})") from e
 
 
 def _compare_exact(prediction: str, reference: str) -> ComparisonResult:
@@ -170,29 +171,6 @@ def _compare_edit_distance(
     )
 
 
-def _levenshtein(a: str, b: str) -> int:
-    if a == b:
-        return 0
-    if len(a) == 0:
-        return len(b)
-    if len(b) == 0:
-        return len(a)
-    # 2 行 DP。a を行、b を列に取る。
-    prev = list(range(len(b) + 1))
-    curr = [0] * (len(b) + 1)
-    for i, ca in enumerate(a, start=1):
-        curr[0] = i
-        for j, cb in enumerate(b, start=1):
-            cost = 0 if ca == cb else 1
-            curr[j] = min(
-                prev[j] + 1,       # deletion
-                curr[j - 1] + 1,   # insertion
-                prev[j - 1] + cost # substitution
-            )
-        prev, curr = curr, prev
-    return prev[len(b)]
-
-
 def _compare_llm_judge(
     prediction: str,
     reference: str,
@@ -214,8 +192,7 @@ def _compare_llm_judge(
                 detail={"source": "judge_fn"},
             )
         raise TypeError(
-            "judge_fn must return ComparisonResult or bool, "
-            f"got {type(raw).__name__}"
+            f"judge_fn must return ComparisonResult or bool, got {type(raw).__name__}"
         )
 
     provider = (llm_provider or "anthropic").lower()
