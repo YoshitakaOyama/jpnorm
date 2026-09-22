@@ -61,8 +61,21 @@ impl Normalizer {
     }
 
     /// 同義語辞書を差し込む。
+    ///
+    /// 辞書は正規化の最終段で適用されるため、キー(表記ゆれ)は正規化後のテキストと
+    /// 照合される。利用者が生の表記 (`㈱サンプル` など) をそのまま書けるよう、
+    /// ここでキーを同じ設定(辞書なし)で正規化してから登録する。正規化の結果
+    /// 空になったキーは捨てる。
     pub fn with_synonyms(mut self, dict: SynonymDict) -> Self {
-        self.synonyms = Some(dict);
+        let plain = Normalizer {
+            config: self.config.clone(),
+            synonyms: None,
+        };
+        let mut normalized = SynonymDict::new();
+        for (variant, canonical) in dict.iter() {
+            normalized.insert(plain.normalize(variant), canonical);
+        }
+        self.synonyms = Some(normalized);
         self
     }
 
@@ -556,9 +569,10 @@ impl NormalizerBuilder {
 
     /// Normalizer を構築する。
     pub fn build(self) -> Normalizer {
-        Normalizer {
-            config: self.config,
-            synonyms: self.synonyms,
+        let n = Normalizer::from_config(self.config);
+        match self.synonyms {
+            Some(dict) => n.with_synonyms(dict),
+            None => n,
         }
     }
 }
@@ -679,6 +693,24 @@ mod tests {
         d.insert("PC", "パソコン");
         let n = Normalizer::builder().synonyms(d).build();
         assert_eq!(n.normalize("PCを買う"), "パソコンを買う");
+    }
+
+    #[test]
+    fn synonym_keys_are_normalized_with_same_config() {
+        // for_compare は ㈱ を展開し記号を除去するので、生表記のキーはそのままでは
+        // 正規化後のテキストに一致しない。キー側も正規化されることを確認する。
+        let mut d = SynonymDict::new();
+        d.insert("㈱サンプル", "株式会社サンプル");
+        d.insert("幽☆遊☆白書", "幽遊白書");
+        d.insert("☆", "無視される"); // 正規化で空になるキー
+        let n = Normalizer::builder()
+            .preset(Preset::ForCompare)
+            .synonyms(d)
+            .build();
+        assert_eq!(n.normalize("㈱サンプル"), "株式会社サンプル");
+        assert_eq!(n.normalize("(株)サンプル"), "株式会社サンプル");
+        assert_eq!(n.normalize("幽☆遊☆白書"), "幽遊白書");
+        assert_eq!(n.synonyms().unwrap().len(), 2);
     }
 
     #[test]

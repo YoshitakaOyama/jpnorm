@@ -50,7 +50,9 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --all-targets
+      # MSRV はライブラリ本体に対する保証。ベンチ等の dev 依存 (criterion) は
+      # より新しい rustc を要求するため --all-targets は付けない。
+      - run: cargo check --workspace
 
   python:
     name: Python ${{ matrix.python }} on ${{ matrix.os }}

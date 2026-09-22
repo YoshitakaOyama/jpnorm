@@ -23,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `synonyms(dict)` / `protect(ProtectConfig)` / `protect_emails()` / `protect_mentions()` /
   `protect_hashtags()` / `canonicalize_numbers()` / `collapse_prolonged_run()` / `keep_emoji()`。
 - Rust: `Preset::ALL`, `Preset::as_str()`, `Display` / `FromStr` (`ParsePresetError`)。
-- Rust: `Normalizer::synonyms()`, `Normalizer::normalize_batch()`, `ProtectConfig::none()`。
+- Rust: `Normalizer::synonyms()`, `Normalizer::normalize_batch()`, `ProtectConfig::none()`, `SynonymDict::iter()`。
 - Rust: `EmojiAction`, `KanaAction`, `ProtectConfig`, `ProtectKind`, `Segment`,
   `NormalizedText` をクレートルートから再エクスポート。
 - CI: Rust MSRV チェック、`cargo doc` 警告チェック、Python 3.10 / 3.12 / 3.14 + macOS / Windows
@@ -41,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Python: `with_custom_dict` / `load_custom_dict_json` は辞書を上書きではなくマージし、
   メソッドチェーンできるよう自身を返す。
 - Python: 型エラー (`TypeError`) と値エラー (`ValueError`) を区別するようになった。
+- 同義語辞書のキーは `Normalizer` と同じ設定で正規化してから登録されるようになった。
+  `for_compare` のような積極的なプリセットでも `㈱サンプル` のような生表記のキーがそのまま使える。
 - **Breaking (Python)**: 対応 Python を 3.10 以上に変更 (3.9 は EOL)。
 - Rust edition 2024、MSRV 1.85。pyo3 0.29、criterion 0.8。
 - `Cargo.lock` をリポジトリに含めるようにした。

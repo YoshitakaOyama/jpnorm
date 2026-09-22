@@ -125,6 +125,14 @@ def test_custom_dict_merges_and_chains():
     assert n.normalize("幽白") == "幽白"
 
 
+def test_custom_dict_keys_match_raw_notation_under_aggressive_preset():
+    n = Normalizer("for_compare").with_custom_dict(
+        {"株式会社サンプル": ["サンプル社", "(株)サンプル", "㈱サンプル"]}
+    )
+    records = ["㈱サンプル", "サンプル社", "株式会社サンプル", "(株)サンプル"]
+    assert {n.normalize(r) for r in records} == {"株式会社サンプル"}
+
+
 def test_custom_dict_rejects_str_value():
     with pytest.raises(TypeError, match="list of str"):
         Normalizer().with_custom_dict({"a": "b"})  # type: ignore[dict-item]

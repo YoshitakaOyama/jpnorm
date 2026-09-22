@@ -122,6 +122,11 @@ impl SynonymDict {
         self.values = std::sync::OnceLock::new();
     }
 
+    /// 全エントリ `(表記ゆれ, 正規形)` を返す(順序は不定)。
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.map.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+
     /// 既存の辞書をマージする。
     pub fn extend(&mut self, other: SynonymDict) {
         for (k, v) in other.map {
