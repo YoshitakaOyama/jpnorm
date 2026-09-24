@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-24
+
+初の「使える」リリース。Python API の全面拡充、CLI、ブラウザプレイグラウンドを追加。
+
 ### Added
 
 - 漢字のゆれ: `kyujitai_to_shinjitai` (旧字体→新字体、310 字)、`unify_itaiji` (髙→高、﨑→崎、渡邊→渡辺 など
@@ -16,24 +20,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `kansuji_to_arabic` がアラビア数字と位取り漢字の混在 (`1万2千`, `1.5億`, `12万3456`, `1,200万`) を解釈するようになった。
 - Rust: 上記に対応する Builder メソッド (`kyujitai_to_shinjitai()`, `lowercase()`, `cjk_spacing(..)`, `era_to_western()` 等) と
   `CaseAction` / `CjkSpacing` の再エクスポート。
-
-### Changed
-
-- **`for_search` の既定が変わった**: 旧字体・異体字・繰り返し記号・外来語の統一、末尾長音の除去、小文字化、
-  元号→西暦、異体字セレクタ除去が有効になった。索引を作り直さないと検索語側と食い違うので注意。
-- **`for_compare` の既定が変わった**: 上記に加えて日本語と英数字の間の空白を削除する (`cjk_spacing="remove"`)。
-- `neologdn_compat` と `for_display` は変更なし。
-
-### Fixed
-
-- `kansuji_to_arabic` が単独の位取り漢字を誤変換していた (`2千` → `21000`)。
-
-## [0.1.0] - 2026-09-22
-
-初の「使える」リリース。Python API の全面拡充、CLI、ブラウザプレイグラウンドを追加。
-
-### Added
-
 - **CLI**: `jpnorm` コマンド (`pipx install jpnorm`)。標準入力/ファイル/引数を正規化、
   `--preset` / `--set key=value` / `--dict` / `--sudachi` / `--json` / `--show-config`。
 - **プレイグラウンド**: <https://yoshitakaoyama.github.io/jpnorm/> でブラウザ上から全プリセットを比較・
@@ -67,6 +53,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **`for_search` の既定が 0.0.4 から変わった**: 旧字体・異体字・繰り返し記号・外来語の統一、末尾長音の除去、小文字化、
+  元号→西暦、異体字セレクタ除去が有効になった。索引を作り直さないと検索語側と食い違うので注意。
+- **`for_compare` の既定が 0.0.4 から変わった**: 上記に加えて日本語と英数字の間の空白を削除する (`cjk_spacing="remove"`)。
+- `neologdn_compat` と `for_display` は変更なし。
 - **Breaking (Rust)**: `EmojiAction::Replace` と `Config::url_wrap` が `&'static str` ではなく
   `Cow<'static, str>` を取るようになった (`EmojiAction::replace(...)` / `wrap_urls(impl Into<Cow>)`)。
   `EmojiAction` は `Copy` ではなくなり、`emoji::process` は `&EmojiAction` を取る。
@@ -84,6 +74,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - ライセンス表記を PEP 639 の SPDX 形式に変更。
 
 ### Fixed
+
+- `kansuji_to_arabic` が単独の位取り漢字を誤変換していた (`2千` → `21000`)。
+- カスタム辞書 JSON のネスト深さに上限 (64) を設けた。以前は極端に深い `[[[[...` を含む辞書を
+  読み込むとスタックオーバーフローで Python プロセスごと落ちていた。今はエラーになる。
+- `kansuji_to_arabic` が u128 を超える桁数の漢数字を release ビルドで桁あふれさせ、無関係な数値に
+  変換していた。今は変換せずそのまま残す。
+- `compare(strategy="llm_judge")` の docstring に、評価対象テキスト経由のプロンプトインジェクションの注意を追記。
 
 - `load_custom_dict_json` / `SynonymDict::from_json*` が `\uXXXX` エスケープ
   (Python の `json.dumps()` 既定出力) を読めなかった。サロゲートペア・`\b` `\f` `\r` も対応。
