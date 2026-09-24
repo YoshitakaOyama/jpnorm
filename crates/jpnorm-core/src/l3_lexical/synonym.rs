@@ -286,6 +286,7 @@ mod json {
         let mut p = Parser {
             chars: &chars,
             i: 0,
+            depth: 0,
         };
         p.skip_ws();
         let value = p.parse_value()?;
@@ -302,9 +303,14 @@ mod json {
         }
     }
 
+    /// 配列/オブジェクトのネスト深さ上限。辞書フォーマットは 2 段までしか使わないが、
+    /// 再帰下降パーサなので上限がないと深いネストでスタックオーバーフローする。
+    const MAX_DEPTH: usize = 64;
+
     struct Parser<'a> {
         chars: &'a [char],
         i: usize,
+        depth: usize,
     }
 
     impl Parser<'_> {
@@ -337,14 +343,28 @@ mod json {
         fn parse_value(&mut self) -> Result<Value, SynonymDictError> {
             match self.peek() {
                 Some('"') => self.parse_string().map(Value::Str),
-                Some('[') => self.parse_array(),
-                Some('{') => self.parse_object(),
+                Some('[') => self.nested(Self::parse_array),
+                Some('{') => self.nested(Self::parse_object),
                 Some(_) => {
                     self.skip_scalar();
                     Ok(Value::Other)
                 }
                 None => Err(self.err("unexpected end of input")),
             }
+        }
+
+        /// ネスト深さを数えながら配列/オブジェクトをパースする。上限超過はエラー。
+        fn nested(
+            &mut self,
+            f: fn(&mut Self) -> Result<Value, SynonymDictError>,
+        ) -> Result<Value, SynonymDictError> {
+            if self.depth >= MAX_DEPTH {
+                return Err(self.err("nesting too deep"));
+            }
+            self.depth += 1;
+            let r = f(self);
+            self.depth -= 1;
+            r
         }
 
         /// 数値/true/false/null を読み飛ばす。
@@ -544,6 +564,18 @@ mod tests {
         assert!(e.to_string().contains("trailing"), "{e}");
         let e = SynonymDict::from_json(r#"{"a": "\ud800"}"#).unwrap_err();
         assert!(e.to_string().contains("surrogate"), "{e}");
+    }
+
+    #[test]
+    fn json_rejects_deep_nesting_without_stack_overflow() {
+        // 再帰下降パーサなので、上限がないと深いネストでプロセスごと落ちる。
+        let deep = format!("{{\"a\": {}{}}}", "[".repeat(100_000), "]".repeat(100_000));
+        let e = SynonymDict::from_json_grouped(&deep).unwrap_err();
+        assert!(e.to_string().contains("nesting too deep"), "{e}");
+        // 通常の辞書 (2 段) はもちろん通る。
+        let ok = format!("{{\"a\": {}{}}}", "[".repeat(10), "]".repeat(10));
+        assert!(SynonymDict::from_json("{\"a\": \"b\"}").is_ok());
+        assert!(SynonymDict::from_json_grouped(&ok).is_err()); // 型不一致だがクラッシュしない
     }
 
     #[test]

@@ -350,15 +350,19 @@ fn parse_small(s: &str) -> Option<u128> {
     for c in s.chars() {
         match c {
             '千' => {
-                total = total.checked_add(if cur == 0 { 1000 } else { cur * 1000 })?;
+                total = total.checked_add(if cur == 0 {
+                    1000
+                } else {
+                    cur.checked_mul(1000)?
+                })?;
                 cur = 0;
             }
             '百' => {
-                total = total.checked_add(if cur == 0 { 100 } else { cur * 100 })?;
+                total = total.checked_add(if cur == 0 { 100 } else { cur.checked_mul(100)? })?;
                 cur = 0;
             }
             '十' => {
-                total = total.checked_add(if cur == 0 { 10 } else { cur * 10 })?;
+                total = total.checked_add(if cur == 0 { 10 } else { cur.checked_mul(10)? })?;
                 cur = 0;
             }
             _ => {
@@ -367,7 +371,7 @@ fn parse_small(s: &str) -> Option<u128> {
             }
         }
     }
-    Some(total + cur)
+    total.checked_add(cur)
 }
 
 fn format_kansuji(mut n: u128) -> String {
@@ -491,6 +495,16 @@ mod tests {
         assert_eq!(kansuji_to_arabic("1,200万円"), "12000000円");
         assert_eq!(kansuji_to_arabic("100万"), "1000000");
         assert_eq!(kansuji_to_arabic("1億2000万"), "120000000");
+    }
+
+    #[test]
+    fn overflow_leaves_input_untouched() {
+        // u128 を超える桁数は変換せずそのまま (release で wrap して別の数値になるのを防ぐ)。
+        let digits: String = "一二三四五六七八九".chars().cycle().take(37).collect();
+        let s = format!("{digits}千");
+        assert_eq!(kansuji_to_arabic(&s), s);
+        let s = format!("{digits}京");
+        assert_eq!(kansuji_to_arabic(&s), s);
     }
 
     #[test]

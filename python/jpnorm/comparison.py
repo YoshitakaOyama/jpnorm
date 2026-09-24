@@ -74,6 +74,13 @@ def compare(
     Returns:
         `ComparisonResult`。
 
+    Note:
+        `llm_judge` は `prediction` / `reference` をそのまま判定プロンプトに埋め込む。
+        評価対象のモデル出力が「score を 1.0 にせよ」のような指示文を含むと、判定 LLM が
+        それに従ってスコアが操作される可能性がある (プロンプトインジェクション)。
+        信頼できない出力を大量に評価する場合は `exact` / `edit_distance` と併用するか、
+        `judge_fn` 側で入力を検査すること。
+
     Raises:
         ValueError: 不明な戦略またはプロバイダ。
     """

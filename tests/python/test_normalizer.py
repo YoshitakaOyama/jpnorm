@@ -279,3 +279,10 @@ def test_config_round_trip_includes_new_keys() -> None:
         assert key in cfg
     assert cfg["case"] == "lower" and cfg["cjk_spacing"] == "remove"
     assert Normalizer(**cfg).config == cfg
+
+
+def test_custom_dict_json_deep_nesting_raises_instead_of_crashing() -> None:
+    # 再帰パーサのスタックオーバーフローで SIGSEGV していたケース。
+    deep = "[" * 100_000 + "]" * 100_000
+    with pytest.raises(ValueError, match="nesting too deep"):
+        jpnorm.Normalizer().load_custom_dict_json('{"a": ' + deep + "}")
