@@ -20,6 +20,11 @@ pub fn kansuji_to_arabic(input: &str) -> String {
             i += 1;
             continue;
         }
+        if let Some(len) = idiom_at(&chars[i..]) {
+            out.extend(&chars[i..i + len]);
+            i += len;
+            continue;
+        }
         let start = i;
         let end = scan_numeric_run(&chars, start);
         let run = &chars[start..end];
@@ -46,6 +51,31 @@ pub fn kansuji_to_arabic(input: &str) -> String {
         i = end;
     }
     out
+}
+
+/// 漢数字を含むが数値として読まない慣用語。位置 0 から一致したら長さを返す。
+const IDIOMS: &[&str] = &[
+    "八百屋",
+    "八百長",
+    "八百万",
+    "百人一首",
+    "十八番",
+    "一石二鳥",
+    "四六時中",
+    "千差万別",
+    "千載一遇",
+    "一期一会",
+    "十人十色",
+    "七転八倒",
+    "五月雨",
+    "五月蝿",
+];
+
+fn idiom_at(chars: &[char]) -> Option<usize> {
+    IDIOMS.iter().find_map(|w| {
+        let n = w.chars().count();
+        (chars.len() >= n && w.chars().zip(chars).all(|(a, &b)| a == b)).then_some(n)
+    })
 }
 
 /// `start` から、漢数字・ASCII 数字・数字に挟まれた `.`・桁区切りとして妥当な `,`
@@ -260,8 +290,14 @@ fn parse_kansuji(s: &str, prev: Option<char>, next: Option<char>) -> Option<u128
     if !has_digit && !has_small_unit {
         return None;
     }
-    // 単独の 万/億/兆/京 も変換対象外。
-    if chars.len() == 1 && has_large_unit {
+    // 単独の 万/億/兆/京 も変換対象外。万/億 で始まる並び (万一) も数値ではない。
+    if chars.len() == 1 && has_large_unit
+        || matches!(chars.first(), Some('万' | '億' | '兆' | '京'))
+    {
+        return None;
+    }
+    // 数十年・何百・幾千 のような概数は特定の数に置き換えない。
+    if matches!(prev, Some('数' | '何' | '幾')) {
         return None;
     }
 
@@ -271,11 +307,25 @@ fn parse_kansuji(s: &str, prev: Option<char>, next: Option<char>) -> Option<u128
     //   - 直前が '第' (第一章→第1章)
     //   - 直前/直後が ASCII 数字 or 別の漢数字単位 (1,一,二 のような混在)
     //   - 直後がカウンタ的な文字 (章/回/位/番/月/日/年/人/個/枚/つ)
-    if chars.len() == 1 && !has_large_unit && !has_small_unit {
+    // 単独の 十/百/千 も同じ扱い。百貨店・千葉・不十分・千代田 を壊さないため。
+    if chars.len() == 1 && !has_large_unit {
         let counter_like = |c: char| {
             matches!(
                 c,
-                '章' | '回' | '位' | '番' | '月' | '日' | '年' | '人' | '個' | '枚' | 'つ' | '度'
+                '章' | '回'
+                    | '位'
+                    | '番'
+                    | '月'
+                    | '日'
+                    | '年'
+                    | '人'
+                    | '個'
+                    | '枚'
+                    | 'つ'
+                    | '度'
+                    | '円'
+                    | '歳'
+                    | '才'
             )
         };
         let context_ok = match (prev, next) {
@@ -446,7 +496,9 @@ mod tests {
 
     #[test]
     fn with_units() {
-        assert_eq!(kansuji_to_arabic("十"), "10");
+        // 単独の 十 は 一 と同じく文脈がなければ変換しない (十分・十字架 を守る)
+        assert_eq!(kansuji_to_arabic("十"), "十");
+        assert_eq!(kansuji_to_arabic("十年"), "10年");
         assert_eq!(kansuji_to_arabic("二十"), "20");
         assert_eq!(kansuji_to_arabic("一千二百三十四"), "1234");
         assert_eq!(kansuji_to_arabic("三億五千万"), "350000000");
@@ -475,9 +527,9 @@ mod tests {
 
     #[test]
     fn roundtrip_small() {
-        // n=1 は format_kansuji → "一" (1文字) となり、context-aware ルールで
-        // スタンドアロン変換されないため roundtrip 対象から外す。
-        for n in [10u128, 99, 100, 1234, 9999, 10000, 350000000] {
+        // n=1/10/100/1000 は format_kansuji で 1 文字 (一/十/百/千) となり、
+        // context-aware ルールでスタンドアロン変換されないため roundtrip 対象から外す。
+        for n in [99u128, 1234, 9999, 10000, 350000000] {
             let k = format_kansuji(n);
             let back = parse_kansuji(&k, None, None).unwrap();
             assert_eq!(back, n, "roundtrip {n} via {k}");
@@ -495,6 +547,51 @@ mod tests {
         assert_eq!(kansuji_to_arabic("1,200万円"), "12000000円");
         assert_eq!(kansuji_to_arabic("100万"), "1000000");
         assert_eq!(kansuji_to_arabic("1億2000万"), "120000000");
+    }
+
+    #[test]
+    fn lone_small_units_need_counter_context() {
+        // Wikipedia 記事で見つかった誤変換
+        for w in [
+            "百貨店",
+            "千葉県",
+            "不十分",
+            "十分",
+            "木暮実千代",
+            "世界大百科事典",
+            "千代田区",
+            "十字架",
+            "宇治十帖",
+        ] {
+            assert_eq!(kansuji_to_arabic(w), w, "{w}");
+        }
+        assert_eq!(kansuji_to_arabic("十年"), "10年");
+        assert_eq!(kansuji_to_arabic("百円"), "100円");
+        assert_eq!(kansuji_to_arabic("千年"), "1000年");
+        assert_eq!(kansuji_to_arabic("十人"), "10人");
+        assert_eq!(kansuji_to_arabic("第十"), "第10");
+        assert_eq!(kansuji_to_arabic("二十歳"), "20歳");
+        assert_eq!(kansuji_to_arabic("五十四帖"), "54帖");
+        assert_eq!(kansuji_to_arabic("百万円"), "1000000円");
+    }
+
+    #[test]
+    fn approximate_numbers_and_idioms_untouched() {
+        for w in [
+            "数十年",
+            "数百人",
+            "何千",
+            "幾万",
+            "万一",
+            "八百屋",
+            "八百長",
+            "百人一首",
+            "十八番",
+        ] {
+            assert_eq!(kansuji_to_arabic(w), w, "{w}");
+        }
+        assert_eq!(kansuji_to_arabic("八百円"), "800円");
+        assert_eq!(kansuji_to_arabic("一万円"), "10000円");
     }
 
     #[test]

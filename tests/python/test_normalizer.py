@@ -300,6 +300,16 @@ def test_custom_dict_json_deep_nesting_raises_instead_of_crashing() -> None:
         ("for_display", "日本全史─ジャパン", "日本全史─ジャパン"),
         ("neologdn_compat", "日本全史─ジャパン", "日本全史-ジャパン"),
         ("neologdn_compat", "ハ─ト", "ハート"),
+        # 2 回目の Wikipedia テスト (10 記事)
+        ("for_compare", "百貨店と千葉県", "百貨店と千葉県"),
+        ("for_compare", "不十分", "不十分"),
+        ("for_compare", "数十年", "数十年"),
+        ("for_compare", "八百屋", "八百屋"),
+        ("for_compare", "南京千両", "南京千両"),
+        ("for_compare", "十年", "10年"),
+        ("for_compare", "N700系", "n700系"),
+        ("for_search", "でしょう…」", "でしょう...」"),
+        ("for_search", "{2\\pi }}}}", "{2\\pi }}}}"),
     ],
 )
 def test_wikipedia_regressions(preset: str, text: str, expected: str) -> None:

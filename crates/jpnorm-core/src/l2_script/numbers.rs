@@ -39,9 +39,19 @@ pub fn canonicalize(input: &str) -> String {
     out
 }
 
+/// 直前が識別子の一部なら `true`。数値トークンはそこから始めない。
+///
+/// - 英字・`_` の直後 (`abc123`, `N700`)
+/// - 数字の直後。トークンは常に丸ごと消費するので、ここに来るのは識別子の途中だけ
+///   (`N700` の `00` を別トークンとして `0` に縮めないため)
+/// - 英数字の直後の `.` (`WHIP1.06` の `06`、`v1.2.03`、`No.36`)
 fn prev_is_word_char(out: &[u8]) -> bool {
-    out.last()
-        .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+    let is_word = |b: &u8| b.is_ascii_alphanumeric() || *b == b'_';
+    match out {
+        [.., before, b'.'] => is_word(before),
+        [.., last] => is_word(last),
+        [] => false,
+    }
 }
 
 /// `bytes` の先頭から数値らしきトークンを貪欲に切り出す。
@@ -145,6 +155,20 @@ mod tests {
     fn does_not_touch_identifier_with_digits() {
         // 識別子中の数字は触らない (abc123 → abc123)
         assert_eq!(canonicalize("abc123"), "abc123");
+    }
+
+    #[test]
+    fn identifiers_are_never_partially_canonicalized() {
+        // Wikipedia 記事で見つかった誤変換 (N700系 → N70系, WHIP1.06 → WHIP1.6)
+        assert_eq!(canonicalize("N700系"), "N700系");
+        assert_eq!(canonicalize("N700S"), "N700S");
+        assert_eq!(canonicalize("R10000000"), "R10000000");
+        assert_eq!(canonicalize("WHIP1.06"), "WHIP1.06");
+        assert_eq!(canonicalize("v1.2.03"), "v1.2.03");
+        assert_eq!(canonicalize("No.036"), "No.036");
+        // 単独の数値は従来どおり
+        assert_eq!(canonicalize("1.060 と 700系"), "1.06 と 700系");
+        assert_eq!(canonicalize("打率.250"), "打率.250");
     }
 
     #[test]
