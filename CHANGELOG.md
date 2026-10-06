@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-06
+
 ### Fixed
 
 - `for_compare` が日本語として正しい文字の重なりを 1 文字に潰していた (`リリース` → `リース`、
@@ -133,7 +135,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - 初回リリース。
 
-[Unreleased]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.4...v0.1.0
 [0.0.4]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/YoshitakaOyama/jpnorm/compare/v0.0.2...v0.0.3
