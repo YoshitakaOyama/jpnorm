@@ -41,8 +41,11 @@ pub fn kansuji_to_arabic(input: &str) -> String {
             };
             let next = chars.get(end).copied();
             parse_kansuji(&segment, prev, next)
-        } else {
+        } else if run[0].is_ascii_digit() {
             parse_mixed(run)
+        } else {
+            // 漢字で始まる混在 (東京7人 の `京7`、`十5`) は数値表現ではない
+            None
         };
         match replaced {
             Some(v) => out.push_str(&v.to_string()),
@@ -69,6 +72,8 @@ const IDIOMS: &[&str] = &[
     "七転八倒",
     "五月雨",
     "五月蝿",
+    "五十嵐",
+    "千歳",
 ];
 
 fn idiom_at(chars: &[char]) -> Option<usize> {
@@ -130,12 +135,12 @@ fn parse_mixed(run: &[char]) -> Option<u128> {
             _ => None,
         };
         if let Some(mult) = mult {
+            // 位取り漢字の前には必ず数がある (`1億万` のような並びは数値ではない)
+            if block.is_empty() {
+                return None;
+            }
             saw_unit = true;
-            let value = if block.is_empty() {
-                1
-            } else {
-                parse_mixed_block(&block, mult)?
-            };
+            let value = parse_mixed_block(&block, mult)?;
             total = total.checked_add(value)?;
             block.clear();
         } else {
@@ -259,6 +264,10 @@ fn is_kansuji(c: char) -> bool {
     )
 }
 
+fn is_cjk_ideograph(c: char) -> bool {
+    matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x3134F)
+}
+
 fn digit_value(c: char) -> Option<u128> {
     Some(match c {
         '〇' | '零' => 0,
@@ -297,7 +306,17 @@ fn parse_kansuji(s: &str, prev: Option<char>, next: Option<char>) -> Option<u128
         return None;
     }
     // 数十年・何百・幾千 のような概数は特定の数に置き換えない。
-    if matches!(prev, Some('数' | '何' | '幾')) {
+    // 不二 (富士) も同じく数ではない。
+    if matches!(prev, Some('数' | '何' | '幾' | '不')) {
+        return None;
+    }
+    // 人名 (三十郎・六三郎) の一部。
+    if next == Some('郎') {
+        return None;
+    }
+    // 京 は桁としてはまれで、人名・地名の一部であることが多い (金田一京助)。
+    // 直後に漢字が続くときは、円 以外は数値とみなさない。
+    if chars.last() == Some(&'京') && next.is_some_and(|n| is_cjk_ideograph(n) && n != '円') {
         return None;
     }
 
@@ -341,6 +360,16 @@ fn parse_kansuji(s: &str, prev: Option<char>, next: Option<char>) -> Option<u128
     }
 
     if !has_large_unit && !has_small_unit {
+        // 位取りのない 2〜3 文字の並び (二三日・一二三・第一三共) は「二、三日」のような
+        // 概数や人名・社名であることが多い。〇 を含むか 4 文字以上 (一九四五年) のときだけ
+        // 数字の並びとして読む。九七式 のような型式 (皇紀の下 2 桁) も数字。
+        let positional = chars.contains(&'〇')
+            || chars.contains(&'零')
+            || chars.len() >= 4
+            || next == Some('式');
+        if chars.len() >= 2 && !positional {
+            return None;
+        }
         let mut n: u128 = 0;
         for c in chars {
             let d = digit_value(c)?;
@@ -491,7 +520,12 @@ mod tests {
 
     #[test]
     fn simple_sequence() {
-        assert_eq!(kansuji_to_arabic("一二三"), "123");
+        assert_eq!(kansuji_to_arabic("一九四五年"), "1945年");
+        assert_eq!(kansuji_to_arabic("二〇二五"), "2025");
+        // 位取りのない 2〜3 文字は概数・人名とみなす
+        assert_eq!(kansuji_to_arabic("一二三"), "一二三");
+        assert_eq!(kansuji_to_arabic("二三日"), "二三日");
+        assert_eq!(kansuji_to_arabic("九七式"), "97式");
     }
 
     #[test]
@@ -592,6 +626,32 @@ mod tests {
         }
         assert_eq!(kansuji_to_arabic("八百円"), "800円");
         assert_eq!(kansuji_to_arabic("一万円"), "10000円");
+    }
+
+    #[test]
+    fn names_and_place_names_untouched() {
+        // Wikipedia 30 記事で見つかった誤変換
+        for w in [
+            "東京7人",
+            "東京15区",
+            "在京5局",
+            "金田一京助",
+            "加藤一二三",
+            "第一三共",
+            "山本二三",
+            "十返舎一九",
+            "會津八一",
+            "椿三十郎",
+            "杵屋六三郎",
+            "五十嵐",
+            "千歳市",
+            "不二三十六景",
+        ] {
+            assert_eq!(kansuji_to_arabic(w), w, "{w}");
+        }
+        assert_eq!(kansuji_to_arabic("一京円"), "10000000000000000円");
+        assert_eq!(kansuji_to_arabic("三十六景"), "36景");
+        assert_eq!(kansuji_to_arabic("二十歳"), "20歳");
     }
 
     #[test]

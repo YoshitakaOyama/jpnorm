@@ -315,6 +315,13 @@ def test_custom_dict_json_deep_nesting_raises_instead_of_crashing() -> None:
         ("for_compare", "2025-01-01", "2025 1 1"),
         ("for_compare", "2025/11", "2025 11"),
         ("for_compare", "ISBN 4-0286-72", "isbn 4 0286 72"),
+        ("for_compare", "東京7人", "東京7人"),
+        ("for_compare", "東京23区", "東京23区"),
+        ("for_compare", "新千歳空港", "新千歳空港"),
+        ("for_compare", "金田一京助", "金田一京助"),
+        ("for_compare", "加藤一二三", "加藤一二三"),
+        ("for_compare", "椿三十郎", "椿三十郎"),
+        ("for_compare", "九七式", "97式"),
     ],
 )
 def test_wikipedia_regressions(preset: str, text: str, expected: str) -> None:
