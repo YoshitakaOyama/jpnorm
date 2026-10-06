@@ -310,6 +310,11 @@ def test_custom_dict_json_deep_nesting_raises_instead_of_crashing() -> None:
         ("for_compare", "N700系", "n700系"),
         ("for_search", "でしょう…」", "でしょう...」"),
         ("for_search", "{2\\pi }}}}", "{2\\pi }}}}"),
+        ("for_compare", "円周率は3.14", "円周率は3.14"),
+        ("for_compare", "2025/01/01", "2025 1 1"),
+        ("for_compare", "2025-01-01", "2025 1 1"),
+        ("for_compare", "2025/11", "2025 11"),
+        ("for_compare", "ISBN 4-0286-72", "isbn 4 0286 72"),
     ],
 )
 def test_wikipedia_regressions(preset: str, text: str, expected: str) -> None:

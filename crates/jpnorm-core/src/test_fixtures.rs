@@ -8,7 +8,7 @@
 
 use crate::Preset;
 
-/// 正規化テストで使う共通入力ケース (131件, 全プリセット網羅)。
+/// 正規化テストで使う共通入力ケース (136件, 全プリセット網羅)。
 ///
 /// 利用例:
 /// ```
@@ -177,4 +177,9 @@ pub const NORMALIZE_CASES: &[(Preset, &str)] = &[
     (Preset::ForCompare, "2025/01/01"),
     (Preset::ForCompare, "一、二、三"),
     (Preset::ForCompare, "第1回から第10回まで"),
+    // 数字に挟まれた記号 (別の数値と衝突させない)
+    (Preset::ForCompare, "2025/11"),
+    (Preset::ForCompare, "円周率は3.14。"),
+    (Preset::ForCompare, "〒100-0001"),
+    (Preset::ForCompare, "2025-01-01"),
 ];

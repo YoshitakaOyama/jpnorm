@@ -10,6 +10,10 @@
 //!
 //! 範囲は ASCII 半角数字のみ対象とする(全角は NFKC 後を前提)。
 //! 不正な形(`1,23`, `1,2345`, `1..2` 等)はトークン認識から外して触らない。
+//!
+//! ハイフンで繋がった数字列 (`03-1234-5678`, `100-0001`, `4-0286-72`) は電話番号・
+//! 郵便番号・ISBN などのコードとみなし、先頭ゼロも含めてそのまま残す。
+//! ただし `2025-01-01` のような日付は `2025/01/01` と揃うよう月日の先頭ゼロを落とす。
 
 /// テキスト中の数値トークンを正規形に揃える。
 pub fn canonicalize(input: &str) -> String {
@@ -21,6 +25,17 @@ pub fn canonicalize(input: &str) -> String {
         // 数値トークンは [ASCII数字] で始まる。
         // 直前が ASCII 英字の場合は識別子の一部とみなし触らない(例: abc123)。
         if bytes[i].is_ascii_digit() && (i == 0 || !prev_is_word_char(out.as_bytes())) {
+            if let Some(parts) = hyphen_chain(&bytes[i..]) {
+                let consumed = parts.iter().map(|p| p.len() + 1).sum::<usize>() - 1;
+                if is_date(&parts) {
+                    let date: Vec<&str> = parts.iter().map(|p| strip_leading_zeros(p)).collect();
+                    out.push_str(&date.join("-"));
+                } else {
+                    out.push_str(&input[i..i + consumed]);
+                }
+                i += consumed;
+                continue;
+            }
             let (token, consumed) = scan_number(&bytes[i..]);
             if consumed > 0 {
                 if let Some(normalized) = normalize_token(token) {
@@ -52,6 +67,50 @@ fn prev_is_word_char(out: &[u8]) -> bool {
         [.., last] => is_word(last),
         [] => false,
     }
+}
+
+/// 先頭から `D+(-D+)+` の形の数字列を切り出し、各部分を返す。
+///
+/// 末尾が英数字・`-`・小数部・桁区切りに続く場合は数値の一部とみなして `None`
+/// (`1-0.5` や `12-34abc` はコード扱いしない)。
+fn hyphen_chain(bytes: &[u8]) -> Option<Vec<&str>> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    loop {
+        let mut end = start;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end == start {
+            return None;
+        }
+        parts.push(std::str::from_utf8(&bytes[start..end]).unwrap());
+        match bytes.get(end) {
+            Some(b'-') if bytes.get(end + 1).is_some_and(u8::is_ascii_digit) => start = end + 1,
+            Some(b'.' | b',') if bytes.get(end + 1).is_some_and(u8::is_ascii_digit) => {
+                return None;
+            }
+            Some(b) if b.is_ascii_alphanumeric() || *b == b'_' => return None,
+            _ => break,
+        }
+    }
+    (parts.len() >= 2).then_some(parts)
+}
+
+/// `YYYY-M-D` / `YYYY-M` (月日は 1〜2 桁) なら日付とみなす。
+fn is_date(parts: &[&str]) -> bool {
+    let in_range =
+        |p: &str, max: u32| p.len() <= 2 && p.parse::<u32>().is_ok_and(|n| (1..=max).contains(&n));
+    match parts {
+        [y, m] => y.len() == 4 && in_range(m, 12),
+        [y, m, d] => y.len() == 4 && in_range(m, 12) && in_range(d, 31),
+        _ => false,
+    }
+}
+
+fn strip_leading_zeros(digits: &str) -> &str {
+    let stripped = digits.trim_start_matches('0');
+    if stripped.is_empty() { "0" } else { stripped }
 }
 
 /// `bytes` の先頭から数値らしきトークンを貪欲に切り出す。
@@ -102,15 +161,7 @@ fn normalize_token(token: &str) -> Option<String> {
         return None;
     }
     // 整数部の先頭ゼロを落とす(ただし 1 桁は残す)。
-    let int_trimmed: String = {
-        let stripped = int_part.trim_start_matches('0');
-        if stripped.is_empty() {
-            "0".to_string()
-        } else {
-            stripped.to_string()
-        }
-    };
-    let mut result = int_trimmed;
+    let mut result = strip_leading_zeros(int_part).to_string();
     if let Some(frac) = frac_part {
         let frac_trimmed = frac.trim_end_matches('0');
         if !frac_trimmed.is_empty() {
@@ -169,6 +220,23 @@ mod tests {
         // 単独の数値は従来どおり
         assert_eq!(canonicalize("1.060 と 700系"), "1.06 と 700系");
         assert_eq!(canonicalize("打率.250"), "打率.250");
+    }
+
+    #[test]
+    fn hyphenated_codes_keep_leading_zeros() {
+        assert_eq!(canonicalize("〒100-0001"), "〒100-0001");
+        assert_eq!(canonicalize("03-1234-5678"), "03-1234-5678");
+        assert_eq!(canonicalize("ISBN 4-0286-72"), "ISBN 4-0286-72");
+        // 日付は月日の先頭ゼロを落とし、スラッシュ区切りと揃える
+        assert_eq!(canonicalize("2025-01-01"), "2025-1-1");
+        assert_eq!(canonicalize("2025/01/01"), "2025/1/1");
+        assert_eq!(canonicalize("2025-06"), "2025-6");
+        // 範囲外の月日はコード扱い
+        assert_eq!(canonicalize("2025-13-01"), "2025-13-01");
+        // 小数を含むものはチェーン扱いしない
+        assert_eq!(canonicalize("1-0.50"), "1-0.5");
+        // 単独の負数は従来どおり
+        assert_eq!(canonicalize("-007"), "-7");
     }
 
     #[test]

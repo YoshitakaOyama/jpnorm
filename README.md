@@ -282,9 +282,9 @@ n.config["nfkc"]   # => True
 | `repeat_limit` | int / None | 同一文字の最大連続数 (英数字は対象外) |
 | `collapse_spaces` / `trim` | bool | 空白の畳み込み・前後トリム |
 | `expand_cjk_compat` / `remove_cjk_compat` | bool | 機種依存文字 (㈱①㌔) の展開 / 除去 |
-| `remove_symbols` | bool | 句読点・記号の除去 |
+| `remove_symbols` | bool | 句読点・記号の除去。数字に挟まれた記号は数値を区別するため残す (`3.14`) か空白にする (`2025/1/1` → `2025 1 1`) |
 | `kansuji_to_arabic` / `arabic_to_kansuji` | bool | 漢数字⇄算用数字 (排他)。`1万2千` `1.5億` のような混在も解釈 |
-| `canonicalize_numbers` | bool | `1,200` / `1200.00` → `1200` |
+| `canonicalize_numbers` | bool | `1,200` / `1200.00` → `1200`。ハイフン区切りのコード (`03-1234-5678`) は触らない |
 | `protect_urls` / `protect_emails` / `protect_mentions` / `protect_hashtags` | bool | 保護領域 |
 | `url_wrap` | (str, str) / None | 保護した URL を prefix/suffix で囲む |
 | `emoji` | `"keep"` / `"remove"` | 絵文字の扱い |
