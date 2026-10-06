@@ -356,7 +356,7 @@ impl Config {
             unify_tildes: true,
             unify_prolonged: true,
             collapse_prolonged_run: true,
-            repeat_limit: Some(1),
+            repeat_limit: Some(2),
             collapse_spaces: true,
             trim: true,
             expand_cjk_compat: true,

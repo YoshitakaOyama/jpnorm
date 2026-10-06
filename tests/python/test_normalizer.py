@@ -286,3 +286,21 @@ def test_custom_dict_json_deep_nesting_raises_instead_of_crashing() -> None:
     deep = "[" * 100_000 + "]" * 100_000
     with pytest.raises(ValueError, match="nesting too deep"):
         jpnorm.Normalizer().load_custom_dict_json('{"a": ' + deep + "}")
+
+
+@pytest.mark.parametrize(
+    ("preset", "text", "expected"),
+    [
+        # Wikipedia 記事で見つかった誤変換 (0.1.0)
+        ("for_compare", "最初にリリースされ", "最初にリリースされ"),
+        ("for_compare", "日本本土にもかかわらず", "日本本土にもかかわらず"),
+        ("for_compare", "あああ", "ああ"),
+        ("for_search", "明治40年代に", "明治40年代に"),
+        ("for_search", "昭和16年に", "1941年に"),
+        ("for_display", "日本全史─ジャパン", "日本全史─ジャパン"),
+        ("neologdn_compat", "日本全史─ジャパン", "日本全史-ジャパン"),
+        ("neologdn_compat", "ハ─ト", "ハート"),
+    ],
+)
+def test_wikipedia_regressions(preset: str, text: str, expected: str) -> None:
+    assert Normalizer(preset).normalize(text) == expected

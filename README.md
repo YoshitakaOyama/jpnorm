@@ -211,11 +211,17 @@ jpnorm.normalize("ﾊﾝｶｸ ﾄ 全角 ＡＢＣ")   # => 'ハンカク ト �
 jpnorm.normalize("あ〜〜〜")              # => 'あ〜'
 ```
 
-neologdn と意図的に違う点は次の 3 つです (ゴールデンテストで管理しています)。
+neologdn と意図的に違う点は次のとおりです (ゴールデンテストで管理しています)。
 
-- 日本語と英数字の間の空白を neologdn は削除しますが、jpnorm は 1 つに畳むだけで残します
+- 日本語に隣接する空白を neologdn は削除しますが、jpnorm は 1 つに畳むだけで残します
+  (`== 概要 ==` は neologdn では `==概要==`)。削除したい場合は `cjk_spacing="remove"`
 - `〜` `~` を neologdn は削除しますが、jpnorm は `〜` に統一して残します
 - `‘’` `“”` `¥` を neologdn は独自変換しますが、jpnorm は既定では触りません (`unify_quotes=True` で統一可)
+- jpnorm は NFKC を掛けるので、`℃` → `°C`、`㎞` → `km`、`Ⅰ` → `I`、`…` → `...` になります
+  (neologdn は残します)。避けたい場合は `nfkc=False`
+- 横棒 `―` (U+2015) を neologdn は長音 `ー` にしますが、jpnorm はダッシュ `-` にします
+- 罫線 `─` `━` を neologdn は常に `ー` にしますが、jpnorm はかなの直後 (`ハ─ト` → `ハート`) だけ
+  `ー` にし、それ以外 (`日本全史─ジャパン`) は `-` にします
 
 移行後に「URL は保護したい」「絵文字は消したい」となったら、そこからフラグを足すだけです。
 
@@ -269,7 +275,7 @@ n.config["nfkc"]   # => True
 | `expand_iteration_marks` | bool | 々ゝゞヽヾ の展開 (人々→人人) |
 | `unify_loanword_kana` | bool | ヴァ→バ、ウェ→ウエ、ティ→テイ、ヂ→ジ など |
 | `strip_trailing_prolonged` | bool | 4 文字以上のカタカナ語の末尾長音を落とす (サーバー→サーバ) |
-| `era_to_western` | bool | 令和6年 / R6年 / 令和六年 → 2024年 |
+| `era_to_western` | bool | 令和6年 / R6年 / 令和六年 → 2024年 (`明治40年代` `平成30年間` のような期間は変換しない) |
 | `cjk_spacing` | `"keep"` / `"remove"` / `"insert"` | 日本語と英数字の間の空白を残す / 消す / 入れる |
 | `unify_hyphens` / `unify_tildes` / `unify_prolonged` / `unify_quotes` | bool | 記号バリエーションの統一 |
 | `collapse_prolonged_run` | bool | 連続する長音符・チルダを 1 つに |

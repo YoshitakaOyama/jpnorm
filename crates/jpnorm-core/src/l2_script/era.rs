@@ -2,7 +2,8 @@
 //!
 //! `令和6年` `令和六年` `令和元年` `R6年` `H30年` を `2024年` `2018年` のように
 //! 西暦に揃える。比較・名寄せ・検索で「同じ年」を同じ文字列にするための処理で、
-//! 元号を持たない `年` には触らない。
+//! 元号を持たない `年` には触らない。`明治40年代` `平成30年間` のような期間表現も
+//! 西暦にすると意味が変わるので変換しない。
 //!
 //! アルファベット略記 (M/T/S/H/R) は、直前が英数字でなく直後に `年` が続く
 //! 場合だけ変換する (`R6年` は変換、`PR6年` や `R6` 単独は変換しない)。
@@ -52,6 +53,10 @@ fn match_era(chars: &[char], i: usize) -> Option<(u32, usize)> {
         }
         let (n, after) = parse_year_number(chars, pos, matched_name)?;
         if chars.get(after) != Some(&'年') {
+            continue;
+        }
+        // 「明治40年代」「平成30年間」は期間を表すので、西暦にすると意味が変わる
+        if matches!(chars.get(after + 1), Some('代' | '間')) {
             continue;
         }
         if n == 0 || n > *max {
@@ -150,5 +155,15 @@ mod tests {
         assert_eq!(era_to_western("2024年"), "2024年");
         assert_eq!(era_to_western("令和の時代"), "令和の時代");
         assert_eq!(era_to_western("R123年"), "R123年");
+    }
+
+    #[test]
+    fn periods_are_not_converted() {
+        assert_eq!(era_to_western("明治40年代に"), "明治40年代に");
+        assert_eq!(era_to_western("昭和三十年代"), "昭和三十年代");
+        assert_eq!(era_to_western("平成30年間で"), "平成30年間で");
+        assert_eq!(era_to_western("S40年代"), "S40年代");
+        // 年度・年生まれは従来どおり変換する
+        assert_eq!(era_to_western("令和2年度"), "2020年度");
     }
 }

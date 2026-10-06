@@ -120,10 +120,15 @@ pub const NORMALIZE_CASES: &[(Preset, &str)] = &[
     (Preset::ForCompare, "〜〜〜"),
     (Preset::ForCompare, "a-b‐c−d―e—f"),
     (Preset::ForCompare, "ＡＢＣ ＡＢＣ"),
-    // 繰り返し畳み込み (repeat_limit = 1 → 同一文字1回のみ)
+    // 繰り返し畳み込み (repeat_limit = 2 → 同一文字2回まで)
     (Preset::ForCompare, "あああ"),
     (Preset::ForCompare, "わーーい"),
     (Preset::ForCompare, "!!!"),
+    // 日本語として正しい重なりは残す
+    (
+        Preset::ForCompare,
+        "最初にリリースされ日本本土にもかかわらず",
+    ),
     // 互換文字
     (Preset::ForCompare, "㈱髙㌔"),
     (Preset::ForCompare, "①②③"),
