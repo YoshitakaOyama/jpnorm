@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "jpnorm"
-version = "0.1.1"
+version = "0.1.2"
 description = "日本語テキスト正規化ライブラリ / Fast, configurable Japanese text normalization"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
