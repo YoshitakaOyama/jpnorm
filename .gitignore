@@ -32,3 +32,4 @@ build/
 
 # Playwright MCP artifacts
 /.playwright-mcp/
+.cache/

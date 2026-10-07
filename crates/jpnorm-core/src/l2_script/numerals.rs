@@ -305,6 +305,10 @@ fn parse_kansuji(s: &str, prev: Option<char>, next: Option<char>) -> Option<u128
     {
         return None;
     }
+    // 〇〇 は伏せ字 (株式会社〇〇・〇〇さん) で数ではない。
+    if chars.len() >= 2 && chars.iter().all(|&c| c == '〇') {
+        return None;
+    }
     // 数十年・何百・幾千 のような概数は特定の数に置き換えない。
     // 不二 (富士) も同じく数ではない。
     if matches!(prev, Some('数' | '何' | '幾' | '不')) {
@@ -649,6 +653,8 @@ mod tests {
         ] {
             assert_eq!(kansuji_to_arabic(w), w, "{w}");
         }
+        assert_eq!(kansuji_to_arabic("株式会社〇〇"), "株式会社〇〇");
+        assert_eq!(kansuji_to_arabic("〇〇〇さん"), "〇〇〇さん");
         assert_eq!(kansuji_to_arabic("一京円"), "10000000000000000円");
         assert_eq!(kansuji_to_arabic("三十六景"), "36景");
         assert_eq!(kansuji_to_arabic("二十歳"), "20歳");

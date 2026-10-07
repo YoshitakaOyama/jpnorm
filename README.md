@@ -242,6 +242,12 @@ n = Normalizer("neologdn_compat", protect_urls=True, emoji="remove")
 一覧は `Normalizer.presets()` で取得できます。迷ったら、**表示なら `for_display`、
 それ以外は `for_search`** から始めて、必要に応じて `for_compare` に寄せるのがおすすめです。
 
+> **漢数字変換の限界**: `for_compare` の漢数字→数字変換 (`kansuji_to_arabic`) はルールベースです。
+> 「一二三」が数か人名か (`加藤一二三`)、「千歳」が年数か地名かは文脈次第で、辞書を引く形態素解析器でも
+> 判定を誤ります。jpnorm は固有名詞・慣用語・概数 (`数十年`)・伏せ字 (`〇〇`) を変換しない側に倒していますが、
+> 誤変換を 0 にはできません。人名・地名が多いデータでは `kansuji_to_arabic=False` で切るか、
+> カスタム辞書で保護してください。
+
 ## 細かく調整する
 
 プリセットをベースに、キーワード引数で個別フラグを上書きできます。
@@ -385,6 +391,12 @@ python -m http.server -d playground 8765   # プレイグラウンドをロー�
 Rust ソースを変更したら `uv sync` で再ビルドされます。
 neologdn とのゴールデン比較テストは `tests/golden/neologdn.jsonl` を使い、
 `uv run --with neologdn scripts/gen-neologdn-golden.py` で再生成できます。
+
+`tests/corpus/` には SNS・レビュー・ニュース・OCR・ビジネス文書風のテキストがあり、全プリセットの出力を
+`tests/corpus/snapshot.jsonl` と突き合わせます。挙動を変えたら
+`uv run python scripts/update-corpus-snapshot.py` で再生成し、差分を確認してからコミットしてください。
+リリース前には `uv run python scripts/wiki-diff.py` で、Wikipedia の記事に対する出力を
+PyPI の最新リリースと比べられます (文字が消える方向の変化が増えていないかを見ます)。
 
 リリースは `CHANGELOG.md` を更新し、`v*` タグを push すると wheel のビルド・PyPI 公開・
 GitHub Release 作成まで自動で行われます。

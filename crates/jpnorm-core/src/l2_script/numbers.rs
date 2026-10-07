@@ -36,6 +36,11 @@ pub fn canonicalize(input: &str) -> String {
                 i += consumed;
                 continue;
             }
+            if let Some(len) = dotted_chain(&bytes[i..]) {
+                out.push_str(&input[i..i + len]);
+                i += len;
+                continue;
+            }
             let (token, consumed) = scan_number(&bytes[i..]);
             if consumed > 0 {
                 if let Some(normalized) = normalize_token(token) {
@@ -95,6 +100,29 @@ fn hyphen_chain(bytes: &[u8]) -> Option<Vec<&str>> {
         }
     }
     (parts.len() >= 2).then_some(parts)
+}
+
+/// `D+.D+.D+...` (バージョン番号・IP アドレス) なら全体の長さを返す。
+/// 小数ではないので末尾ゼロも先頭ゼロも落とさない (`1.0.0`, `192.168.0.1`)。
+fn dotted_chain(bytes: &[u8]) -> Option<usize> {
+    let mut i = 0;
+    let mut dots = 0;
+    loop {
+        let start = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == start {
+            return None;
+        }
+        if bytes.get(i) == Some(&b'.') && bytes.get(i + 1).is_some_and(u8::is_ascii_digit) {
+            dots += 1;
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    (dots >= 2).then_some(i)
 }
 
 /// `YYYY-M-D` / `YYYY-M` (月日は 1〜2 桁) なら日付とみなす。
@@ -220,6 +248,15 @@ mod tests {
         // 単独の数値は従来どおり
         assert_eq!(canonicalize("1.060 と 700系"), "1.06 と 700系");
         assert_eq!(canonicalize("打率.250"), "打率.250");
+    }
+
+    #[test]
+    fn dotted_versions_and_addresses_untouched() {
+        assert_eq!(canonicalize("バージョン1.0.0"), "バージョン1.0.0");
+        assert_eq!(canonicalize("192.168.0.10"), "192.168.0.10");
+        assert_eq!(canonicalize("2.10.0 リリース"), "2.10.0 リリース");
+        // 小数は従来どおり
+        assert_eq!(canonicalize("1.50 と 2.0"), "1.5 と 2");
     }
 
     #[test]
