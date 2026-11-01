@@ -26,7 +26,7 @@ daachorse = "5.0"
 criterion = { version = "0.8", features = ["html_reports"] }
 # `extension-module` は pyproject.toml ([tool.maturin] features) 側で有効化する。
 # ここで常時有効にすると `cargo test --workspace` がリンクできなくなる。
-pyo3 = { version = "0.29", features = ["generate-import-lib"] }
+pyo3 = { version = "0.30", features = ["generate-import-lib"] }
 
 [profile.release]
 lto = "thin"
