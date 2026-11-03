@@ -1,5 +1,7 @@
 # jpnorm
 
+[English README](README.en.md) / 日本語
+
 [![PyPI](https://img.shields.io/pypi/v/jpnorm)](https://pypi.org/project/jpnorm/)
 [![Python](https://img.shields.io/pypi/pyversions/jpnorm)](https://pypi.org/project/jpnorm/)
 [![CI](https://github.com/YoshitakaOyama/jpnorm/actions/workflows/ci.yml/badge.svg)](https://github.com/YoshitakaOyama/jpnorm/actions/workflows/ci.yml)
